@@ -1,10 +1,14 @@
 Package: gps.stops.matcher
 Title: Matching of bus GPS locations to bus stops
 Version: 0.0.0.9000
-Authors@R: person("Tarciso", "Braz", email = "tarcisocomp@gmail.com", role = c("aut", "cre"))
-Authors@R: person("Jair", "Neto", email = "jair.neto@ccc.ufcg.edu.br", role = c("aut"))
-Description: What the package does (one paragraph).
-Depends: A simple tool for matching bus GPS data to GTFS bus stops data.
+Authors@R: c(person("Tarciso", "Braz", email = "tarcisocomp@gmail.com", role = c("aut", "cre")),
+             person("Jair", "Neto", email = "jair.neto@ccc.ufcg.edu.br", role = c("aut")))
+Description: A simple tool for matching bus GPS data to GTFS bus stops data.
+Imports:
+    dplyr,
+    lubridate,
+    geosphere
+Depends: 
     R (>= 3.2.3)
 License: GPL2
 Encoding: UTF-8

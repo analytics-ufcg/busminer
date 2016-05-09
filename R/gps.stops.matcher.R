@@ -1,6 +1,6 @@
-library(dplyr)
-library(lubridate)
-library(geosphere)
+require(dplyr)
+require(lubridate)
+require(geosphere)
 
 #' Checks if the location of two geographical points match
 #'
@@ -58,8 +58,8 @@ get.trips.initial.points <- function(locations.df, initial.pt.df, thresh = 50) {
 #'
 #' @examples
 #' library(lubridate)
-#' t1 <- parse_date_time("1/1/1990 10:15:25", "ymd HMS", tz = "GMT-3")
-#' t2 <- parse_date_time("1/1/1990 10:55:09", "ymd HMS", tz = "GMT-3")
+#' t1 <- parse_date_time("1/1/1990 10:15:25", "mdy HMS", tz = "GMT-3")
+#' t2 <- parse_date_time("1/1/1990 10:55:09", "mdy HMS", tz = "GMT-3")
 #' diff.time(t1,t2)
 #'
 #' @export
