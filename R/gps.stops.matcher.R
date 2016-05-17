@@ -454,6 +454,27 @@ match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE
   return(line.matched.stops)
 }
 
+
+#' Matches stops to GPS locations 
+#'
+#' This function splits GPS locations by line and orders the locations by timestamp to call match.line.locations.stops.
+#'
+#' @param location.data data frame with all GPS locations
+#' @param stops.df stops locations data frame
+#' @param verbose if TRUE then debugging logs are printed during processing 
+#'
+#' @return data frame with matched stops and GPS locations data
+#'
+#' @examples
+#'
+#' @export
+match.locations.stops <- function(location.data,stops.df,verbose=FALSE) {
+  matches <- location.data %>% group_by(codlinha) %>% 
+    arrange(timestamp) %>%
+    do(match.line.locations.stops(.,stops.df,verbose))
+  return(matches)
+}
+
 #' Reads and pre-processes GPS data
 #'
 #' This function reads GPS data from a csv file and parses the timestamps into POSIXct date-time objects
