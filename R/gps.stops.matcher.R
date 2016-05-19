@@ -225,7 +225,7 @@ match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, in
   matched.stops <- merge(x = stops.locations.df,y = trip.locations.df,by.x = "location.match", by.y="location.id")
   
   select(matched.stops, stop_id, stop_sequence, stop_name, stop_lat, stop_lon, arrival_time, route_short_name, route_long_name,
-         codveiculo, latitude, longitude, timestamp, trip.num)
+         bus.code, latitude, longitude, timestamp, trip.num)
 }
 
 #' Returns initial stop sequence for GPS bus trajectory
@@ -346,7 +346,7 @@ disambiguate.matched.stop <- function(location.row, initial.stops.sequence, trip
 #'
 #' @export
 match.bus.locations.stops <- function(bus.locations.df,line.stops.df,verbose=FALSE) {
-  cat("\n\nMatching locations for bus:",as.character(bus.locations.df[1,]$codveiculo),"\n\n")
+  cat("\n\nMatching locations for bus:",as.character(bus.locations.df[1,]$bus.code),"\n\n")
   
   matched.stops <- data.frame()
   
@@ -428,7 +428,7 @@ get.line.longest.trip <- function(line,stops.df) {
 #'
 #' @export
 match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE) {
-  line <- as.character(line.location.data[1,]$codlinha)
+  line <- as.character(line.location.data[1,]$line.code)
   
   line.matched.stops <- data.frame()
   
@@ -442,14 +442,14 @@ match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE
     return(line.matched.stops)
   }
   
-  line.matched.stops <- line.location.data %>% group_by(codveiculo) %>%
+  line.matched.stops <- line.location.data %>% group_by(bus.code) %>%
     do(match.bus.locations.stops(bus.locations.df = ., line.stops.df=line.trip,verbose)) %>%
     rbind(line.matched.stops,.)
   
-  line.matched.stops <- line.matched.stops %>% group_by(codveiculo, trip.num) %>%
+  line.matched.stops <- line.matched.stops %>% group_by(bus.code, trip.num) %>%
     mutate(num.matched.stops = n()) %>% filter(num.matched.stops >= nrow(line.trip)/3)
   
-  line.matched.stops <- line.matched.stops %>% group_by(codveiculo, trip.num) %>% arrange(codveiculo,trip.num,timestamp)
+  line.matched.stops <- line.matched.stops %>% group_by(bus.code, trip.num) %>% arrange(bus.code,trip.num,timestamp)
   
   return(line.matched.stops)
 }
@@ -469,7 +469,7 @@ match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE
 #'
 #' @export
 match.locations.stops <- function(location.data,stops.df,verbose=FALSE) {
-  matches <- location.data %>% group_by(codlinha) %>% 
+  matches <- location.data %>% group_by(line.code) %>% 
     arrange(timestamp) %>%
     do(match.line.locations.stops(.,stops.df,verbose))
   return(matches)
@@ -488,7 +488,8 @@ match.locations.stops <- function(location.data,stops.df,verbose=FALSE) {
 #' @export
 prepare.gps.data <- function(bus.gps.csv.file.path) {
   location.data <- read.csv(bus.gps.csv.file.path)
-  location.data$timestamp <- parse_date_time(location.data$data, "ymd HMS", tz = "GMT-3")
+  names(location.data) <- c("bus.code","latitude","longitude","date","line.code")
+  location.data$timestamp <- parse_date_time(location.data$date, "ymd HMS", tz = "GMT-3")
   
   return(location.data)
 }
