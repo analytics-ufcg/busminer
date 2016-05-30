@@ -530,24 +530,46 @@ prepare.stops.data <- function(gtfs.folder.path) {
   return(stops.detailed)
 }
 
-#' Retrieve the departure time of each trip for each line
+#' Retrieve initial stop data of each trip for each line
 #'
-#'  This function groups the stops by route_id and trip_id, and then extracts the arrival time of the first stop in each trip 
+#'  This function groups the stops by route_id and trip_id, and then returns the data of the first stop in each trip 
 #'
 #' @param stops.df GTFS stop times data frame
 #'
-#' @return data frame with the departure time for each trip
+#' @return data frame with initial stop data for each trip 
 #'
 #' @examples
 #'
 #' @export
-get.trip.initial.time <- function(stops.df) {
-  trips.initial.time <- stops.df %>% 
+get.trips.initial.stops <- function(stops.df) {
+  trips.initial.stops <- stops.df %>% 
     group_by(route_short_name, trip_id) %>% 
-    filter(stop_sequence == 1 & service_id == 1) %>% 
-    select(route_short_name, trip_id, departure_time) %>%
+    filter(stop_sequence == 1 & service_id == 1) %>%
     mutate(departure_time = fix.timestamp(as.character(departure_time)))
   
-    #names(trips.initial.time) <- c("route","trip.id","timestamp")
-  return(trips.initial.time)
+  return(trips.initial.stops)
+}
+
+#' Matches real trip to GTFS scheduled trip
+#'
+#' This function orders GTFS trips initial stops by their difference in distance and timestamp to the real trip initial stop.
+#'
+#' @param real.trip.initial.stop data frame with data for a single real trip initial stop
+#' @param scheduled.trips.initial.stops data frame with data for all scheduled trips for the real trip line
+#'
+#' @return data frame with matched trips with real trip number, scheduled trip id, distance and time difference between them
+#'
+#' @examples
+#'
+#' @export
+match.trip <- function(real.trip.initial.stop, scheduled.trips.initial.stops) {
+  matched.trip <- scheduled.trips.initial.stops %>% 
+    rowwise() %>%
+    mutate(dist = distHaversine(c(real.trip.initial.stop$stop_lon,real.trip.initial.stop$stop_lat),c(stop_lon,stop_lat)),
+           time.diff = abs(difftime(real.trip.initial.stop$timestamp, departure_time, units = "mins"))) %>%
+    arrange(dist,time.diff) %>%
+    filter(row_number() <= 1) %>%
+    select(trip_id,departure_time,dist,time.diff)
+  matched.trip$trip.num <- real.trip.initial.stop$trip.num
+  return(matched.trip)
 }
