@@ -47,26 +47,6 @@ get.trips.initial.points <- function(locations.df, initial.pt.df, thresh = 50) {
   return(trip.initial.points)
 }
 
-#' Returns time difference between two timestamps
-#'
-#' Calculates t2 - t1 difference
-#'
-#' @param t1 GPS locations data frame
-#' @param t2 initial point (longitude,latitude) dataframe
-#'
-#' @return time difference between t2 and t1 in minutes
-#'
-#' @examples
-#' library(lubridate)
-#' t1 <- parse_date_time("1/1/1990 10:15:25", "mdy HMS", tz = "GMT-3")
-#' t2 <- parse_date_time("1/1/1990 10:55:09", "mdy HMS", tz = "GMT-3")
-#' diff.time(t1,t2)
-#'
-#' @export
-diff.time <- function(t1, t2) {
-  return (difftime(t2, t1,units = "mins"))
-}
-
 #' Returns point trip number
 #'
 #' Matches point to trip according to point timestamp
@@ -81,9 +61,9 @@ diff.time <- function(t1, t2) {
 #' @export
 get.trip.number <- function(point.timestamp, trips.inits.df) {
   t <- trips.inits.df$timestamp
-  res <- min(which(t > point.timestamp)) -1
-  vector <- as.numeric(nrow(trips.inits.df))
-  return(if (is.infinite(res)) vector else res)
+  next.trips <- which(t > point.timestamp)
+  res <- ifelse(length(next.trips) == 0, as.numeric(nrow(trips.inits.df)), min(next.trips) -1)
+  return(res)
 }
 
 #' Returns distance between stop and GPS location points
@@ -105,19 +85,35 @@ get.stop.location.dist <- function(locations.df, stops.df, stop.row, location.ro
                 c(stops.df[stop.row,]$stop_lon, stops.df[stop.row,]$stop_lat))
 }
 
+#' Refines a given stop-location match using a surrounding location interval range
+#'
+#' 
+#'
+#' @param locations.df GPS locations data frame
+#' @param stops.df stops locations data frame
+#' @param st.row matched stop row number in stop in stops.df 
+#' @param loc.row matched location row number in locations.df
+#'
+#' @return the best match for the given stop among the given locations interval
+#'
+#' @examples
+#'
+#' @export
 refine.match <- function(locations.df, stops.df, st.row, loc.row, interval.range) {
-  cat("Initial Match between location row #",loc.row,"and stop row #",st.row,"with distance:",
-      get.stop.location.dist(locations.df, stops.df, st.row, loc.row),"\n")
+  #cat("Initial Match between location row #",loc.row,"and stop row #",st.row,"with distance:",
+      #get.stop.location.dist(locations.df, stops.df, st.row, loc.row),"\n")
   
   interval.begin <- ifelse((loc.row - interval.range/2) < 1, 1,(loc.row - interval.range/2))
   interval.end <- ifelse((loc.row + interval.range/2) > nrow(locations.df), nrow(locations.df),(loc.row + interval.range/2))
   interval.range <- interval.end - interval.begin + 1
   
-  cat("Interval chosen - begin:",interval.begin,"end:",interval.end,"range:",interval.range,"\n")
-  stop.dist <- data.frame(loc.row=interval.begin:interval.end, dist=rep(.Machine$double.xmax,interval.range),
-                          lon=rep(0,interval.range),lat=rep(0,interval.range),
+  #cat("Interval chosen - begin:",interval.begin,"end:",interval.end,"range:",interval.range,"\n")
+  stop.dist <- data.frame(loc.row=interval.begin:interval.end, 
+                          dist=rep(.Machine$double.xmax,interval.range),
+                          lon=rep(0,interval.range),
+                          lat=rep(0,interval.range),
                           time=rep(ymd("1996-06-08"),interval.range))
-  cat("Locations df size:",nrow(locations.df),"Stop Dist df size:",nrow(stop.dist),"\n")
+  #cat("Locations df size:",nrow(locations.df),"Stop Dist df size:",nrow(stop.dist),"\n")
   
   for (i in interval.begin:interval.end) {
     stop.dist[stop.dist$loc.row == i,] <- c(i,get.stop.location.dist(locations.df, stops.df, st.row, i),
@@ -125,28 +121,31 @@ refine.match <- function(locations.df, stops.df, st.row, loc.row, interval.range
   }
   
   stop.dist <- stop.dist %>% arrange(dist)
+  #cat("Final Match between location row #", stop.dist[1,c("loc.row")],"and stop row #",
+      #st.row,"with distance:",stop.dist[1,c("dist")],"m\n")
+  #print(stop.dist)
   return(stop.dist)
 }
 
-estimate.stop.time <- function(matching.interval,stops.df,stop.row,estimation.range) {
-  matching.loc.row <- matching.interval[1,c("loc.row")]
-  trip.interval <- arrange(matching.interval,loc.row)
-  
-  est.interval.begin <- ifelse((matching.loc.row - estimation.range + 1) < 1,1,(matching.loc.row - estimation.range + 1))
-  est.interval.end <- ifelse((matching.loc.row + estimation.range - 1) > nrow(matching.interval),nrow(matching.interval),
-                             (matching.loc.row + estimation.range - 1))
-  
-  delta.space <- distHaversine(trip.interval[est.interval.begin,c("longitude","latitude")],
-                              trip.interval[est.interval.end,c("longitude","latitude")])
-  delta.time <- difftime(trip.interval[est.interval.begin,c("timestamp")],
-                         trip.interval[est.interval.end,c("timestamp")],
-                         units="secs")
-  
-  mean.speed <- delta.space/delta.time
-  
-  stop.dist <- distHaversine(trip.interval[matching.loc.row,c("longitude","latitude")],
-                             stops.df[stop.row,c("stop_lon","stop_lat")])
-}
+# estimate.stop.time <- function(matching.interval,stops.df,stop.row,estimation.range) {
+#   matching.loc.row <- matching.interval[1,c("loc.row")]
+#   trip.interval <- arrange(matching.interval,loc.row)
+#   
+#   est.interval.begin <- ifelse((matching.loc.row - estimation.range + 1) < 1,1,(matching.loc.row - estimation.range + 1))
+#   est.interval.end <- ifelse((matching.loc.row + estimation.range - 1) > nrow(matching.interval),nrow(matching.interval),
+#                              (matching.loc.row + estimation.range - 1))
+#   
+#   delta.space <- distHaversine(trip.interval[est.interval.begin,c("longitude","latitude")],
+#                               trip.interval[est.interval.end,c("longitude","latitude")])
+#   delta.time <- difftime(trip.interval[est.interval.begin,c("timestamp")],
+#                          trip.interval[est.interval.end,c("timestamp")],
+#                          units="secs")
+#   
+#   mean.speed <- delta.space/delta.time
+#   
+#   stop.dist <- distHaversine(trip.interval[matching.loc.row,c("longitude","latitude")],
+#                              stops.df[stop.row,c("stop_lon","stop_lat")])
+# }
 
 #' Matches stops to GPS locations for a trip 
 #'
@@ -215,19 +214,18 @@ match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, in
       }
     }
     
-    if (verbose) cat("Match between stop#",stop.row,"and location#",location.row,"with distance=",
-                     get.stop.location.dist(trip.locations.df,stops.locations.df,stop.row,location.row),"m\n")
     matching.interval <-refine.match(locations.df = trip.locations.df, stops.df = stops.locations.df, 
                        loc.row = location.row, st.row = stop.row, interval.range = 20)
+    if (verbose) cat("Match between stop#",stop.row,"and location#",location.row,"with distance=",
+                     get.stop.location.dist(trip.locations.df,stops.locations.df,stop.row,location.row),"m\n")
     stops.locations.df[stop.row, c("location.match")] <- matching.interval[1,c("loc.row")]
-    
   }
   
   trip.locations.df$location.id <- 1:nrow(trip.locations.df)
   matched.stops <- merge(x = stops.locations.df,y = trip.locations.df,by.x = "location.match", by.y="location.id")
   
   select(matched.stops, stop_id, stop_sequence, stop_name, stop_lat, stop_lon, arrival_time, route_short_name, route_long_name,
-         codveiculo, latitude, longitude, timestamp, trip.num)
+         bus.code, latitude, longitude, timestamp, trip.num)
 }
 
 #' Returns initial stop sequence for GPS bus trajectory
@@ -348,7 +346,7 @@ disambiguate.matched.stop <- function(location.row, initial.stops.sequence, trip
 #'
 #' @export
 match.bus.locations.stops <- function(bus.locations.df,line.stops.df,verbose=FALSE) {
-  cat("\n\nMatching locations for bus:",as.character(bus.locations.df[1,]$codveiculo),"\n\n")
+  cat("\n\nMatching locations for bus:",as.character(bus.locations.df[1,]$bus.code),"\n\n")
   
   matched.stops <- data.frame()
   
@@ -366,8 +364,10 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,verbose=FAL
   trip.initial.points <- get.trips.initial.points(bus.locations.df, trip.initial.point)
 
   #Eliminating repeated points at the same location (stop)
-  trip.initial.points <- mutate(trip.initial.points, dist.between.trips = diff.time(lag(timestamp),timestamp))
+  trip.initial.points <- mutate(trip.initial.points, dist.between.trips = difftime(timestamp, lag(timestamp), units = "mins"))
   trip.initial.points <- filter(trip.initial.points, (is.na(dist.between.trips) | (dist.between.trips > 30)))
+  
+  if (verbose) cat("#Trips:",nrow(trip.initial.points))
   
   #Assigning trip number to each trip
   trip.initial.points$trip.num<-seq.int(nrow(trip.initial.points))
@@ -376,7 +376,7 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,verbose=FAL
   bus.locations.df <- bus.locations.df %>% rowwise() %>% mutate(trip.num = get.trip.number(timestamp, trip.initial.points))
   
   #Matching trip stops
-  matched.stops <- bus.locations.df %>% group_by(trip.num) %>% 
+  matched.stops <- bus.locations.df %>% ungroup() %>% group_by(trip.num) %>%
     do(match.trip.locations.stops(trip.locations.df = .,
                                   stops.locations.df = line.stops.df,
                                   init.stop.seq = initial.stop.seq,verbose)) %>%
@@ -428,7 +428,7 @@ get.line.longest.trip <- function(line,stops.df) {
 #'
 #' @export
 match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE) {
-  line <- as.character(line.location.data[1,]$codlinha)
+  line <- as.character(line.location.data[1,]$line.code)
   
   line.matched.stops <- data.frame()
   
@@ -442,16 +442,37 @@ match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE
     return(line.matched.stops)
   }
   
-  line.matched.stops <- line.location.data %>% group_by(codveiculo) %>%
+  line.matched.stops <- line.location.data %>% group_by(bus.code) %>%
     do(match.bus.locations.stops(bus.locations.df = ., line.stops.df=line.trip,verbose)) %>%
     rbind(line.matched.stops,.)
   
-  line.matched.stops <- line.matched.stops %>% group_by(codveiculo, trip.num) %>%
+  line.matched.stops <- line.matched.stops %>% group_by(bus.code, trip.num) %>%
     mutate(num.matched.stops = n()) %>% filter(num.matched.stops >= nrow(line.trip)/3)
   
-  line.matched.stops <- line.matched.stops %>% group_by(codveiculo, trip.num) %>% arrange(codveiculo,trip.num,timestamp)
+  line.matched.stops <- line.matched.stops %>% group_by(bus.code, trip.num) %>% arrange(bus.code,trip.num,timestamp)
   
   return(line.matched.stops)
+}
+
+
+#' Matches stops to GPS locations 
+#'
+#' This function splits GPS locations by line and orders the locations by timestamp to call match.line.locations.stops.
+#'
+#' @param location.data data frame with all GPS locations
+#' @param stops.df stops locations data frame
+#' @param verbose if TRUE then debugging logs are printed during processing 
+#'
+#' @return data frame with matched stops and GPS locations data
+#'
+#' @examples
+#'
+#' @export
+match.locations.stops <- function(location.data,stops.df,verbose=FALSE) {
+  matches <- location.data %>% group_by(line.code) %>% 
+    arrange(timestamp) %>%
+    do(match.line.locations.stops(.,stops.df,verbose))
+  return(matches)
 }
 
 #' Reads and pre-processes GPS data
@@ -467,7 +488,8 @@ match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE
 #' @export
 prepare.gps.data <- function(bus.gps.csv.file.path) {
   location.data <- read.csv(bus.gps.csv.file.path)
-  location.data$timestamp <- parse_date_time(location.data$data, "ymd HMS", tz = "GMT-3")
+  names(location.data) <- c("bus.code","latitude","longitude","date","line.code")
+  location.data$timestamp <- parse_date_time(location.data$date, "ymd HMS", tz = "GMT-3")
   
   return(location.data)
 }
