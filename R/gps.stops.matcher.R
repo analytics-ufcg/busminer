@@ -128,7 +128,7 @@ refine.match <- function(locations.df, stops.df, st.row, loc.row, interval.range
   return(stop.dist)
 }
 
-estimate.stop.time(matching.interval,stops.df,stop.row,estimation.range) {
+estimate.stop.time <- function(matching.interval,stops.df,stop.row,estimation.range) {
   matching.loc.row <- matching.interval[1,c("loc.row")]
   trip.interval <- arrange(matching.interval,loc.row)
   
@@ -138,7 +138,7 @@ estimate.stop.time(matching.interval,stops.df,stop.row,estimation.range) {
   
   delta.space <- distHaversine(trip.interval[est.interval.begin,c("longitude","latitude")],
                               trip.interval[est.interval.end,c("longitude","latitude")])
-  delta.time <- difftime((trip.interval[est.interval.begin,c("timestamp")],
+  delta.time <- difftime(trip.interval[est.interval.begin,c("timestamp")],
                          trip.interval[est.interval.end,c("timestamp")],
                          units="secs")
   
@@ -376,7 +376,7 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,verbose=FAL
   bus.locations.df <- bus.locations.df %>% rowwise() %>% mutate(trip.num = get.trip.number(timestamp, trip.initial.points))
   
   #Matching trip stops
-  matched.stops <- bus.locations.df %>% group_by(trip.num) %>% filter(trip.num == 1) %>%
+  matched.stops <- bus.locations.df %>% group_by(trip.num) %>% 
     do(match.trip.locations.stops(trip.locations.df = .,
                                   stops.locations.df = line.stops.df,
                                   init.stop.seq = initial.stop.seq,verbose)) %>%
@@ -472,6 +472,12 @@ prepare.gps.data <- function(bus.gps.csv.file.path) {
   return(location.data)
 }
 
+fix.timestamp <- function(timestamp) {
+  splitted.time <- strsplit(timestamp,":")[[1]]
+  splitted.time[1] <- ifelse(splitted.time[1] == "24","00",splitted.time[1])
+  return(paste(splitted.time,collapse=":"))
+}
+
 #' Reads and pre-processes stops data
 #'
 #' This function reads GTFS data from a csv file, assembles the necessary information and organizes it into a data frame for simpler usage.
@@ -495,18 +501,31 @@ prepare.stops.data <- function(gtfs.folder.path) {
   stops.detailed <- merge(stops.detailed,stops)
   
   stops.detailed <- stops.detailed %>%
-    select(trip_id, arrival_time, stop_id, stop_sequence, service_id, trip_headsign, direction_id, route_id, route_short_name, route_long_name,
+    select(trip_id, arrival_time, departure_time, stop_id, stop_sequence, service_id, trip_headsign, direction_id, route_id, route_short_name, route_long_name,
            route_type, route_color, stop_name, stop_lat, stop_lon) %>%
     arrange(route_short_name, trip_id, stop_sequence)
   
   return(stops.detailed)
 }
 
-location.data <- prepare.gps.data("/local/tarciso/analytics/bigsea-transporte/data/db_backup/onibus.csv")
-stops.data <- prepare.stops.data("/local/tarciso/analytics/bigsea-transporte/data/google_transit/")
-
-location.test <- location.data %>% filter(codlinha == "022" & codveiculo == "AL300")
-
-matches.test <- location.test %>% group_by(codlinha) %>%
-  arrange(timestamp) %>%
-  do(match.line.locations.stops(.,stops.data,verbose=TRUE))
+#' Retrieve the departure time of each trip for each line
+#'
+#'  This function groups the stops by route_id and trip_id, and then extracts the arrival time of the first stop in each trip 
+#'
+#' @param stops.df GTFS stop times data frame
+#'
+#' @return data frame with the departure time for each trip
+#'
+#' @examples
+#'
+#' @export
+get.trip.initial.time <- function(stops.df) {
+  trips.initial.time <- stops.df %>% 
+    group_by(route_short_name, trip_id) %>% 
+    filter(stop_sequence == 1 & service_id == 1) %>% 
+    select(route_short_name, trip_id, departure_time) %>%
+    mutate(departure_time = fix.timestamp(as.character(departure_time)))
+  
+    #names(trips.initial.time) <- c("route","trip.id","timestamp")
+  return(trips.initial.time)
+}
