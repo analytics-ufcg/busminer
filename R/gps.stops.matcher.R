@@ -557,7 +557,7 @@ get.trips.initial.stops <- function(stops.df) {
 #' @param real.trip.initial.stop data frame with data for a single real trip initial stop
 #' @param scheduled.trips.initial.stops data frame with data for all scheduled trips for the real trip line
 #'
-#' @return data frame with matched trips with real trip number, scheduled trip id, distance and time difference between them
+#' @return data frame with matched trips with real trip line code, bus code, timestamp and trip number, and scheduled trip id, distance and time difference between them
 #'
 #' @examples
 #'
@@ -568,8 +568,8 @@ match.trip <- function(real.trip.initial.stop, scheduled.trips.initial.stops) {
     mutate(dist = distHaversine(c(real.trip.initial.stop$stop_lon,real.trip.initial.stop$stop_lat),c(stop_lon,stop_lat)),
            time.diff = abs(difftime(real.trip.initial.stop$timestamp, departure_time, units = "mins"))) %>%
     arrange(dist,time.diff) %>%
-    filter(row_number() <= 1) %>%
+    filter(row_number() == 1) %>%
     select(trip_id,departure_time,dist,time.diff)
-  matched.trip$trip.num <- real.trip.initial.stop$trip.num
+  matched.trip <- cbind(real.trip.initial.stop[c("line.code","bus.code","timestamp","trip.num")],matched.trip)
   return(matched.trip)
 }
