@@ -164,6 +164,8 @@ refine.match <- function(locations.df, stops.df, st.row, loc.row, interval.range
 match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, init.stop.seq, verbose=FALSE) {
   cat("\nMatching GPS and GTFS data for trip#",trip.locations.df[1,]$trip.num,"\n")
   
+  if (verbose) cat("Number of locations for trip: ",nrow(trip.locations.df),"\n")
+  
   stops.locations.df$location.match <- NA
   max.optimal.dist.threshold <- 30
   max.acceptable.dist.threshold <- 100
@@ -195,10 +197,7 @@ match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, in
     if (curr.dist > max.optimal.dist.threshold) {
       if (verbose) cat("Could not find matching location to stop#",stop.row,"with dist < 30\n")
       next.locs.dist <- arrange(next.locs.dist,dist)
-      #if (verbose) cat("Last row compared:",indice,"num.location.rows:",nrow(trip.locations.df),"\n")
       if (verbose) cat("Last row compared:",location.row,"num.location.rows:",nrow(trip.locations.df),"\n")
-      #indice <- next.locs.dist[1,1]
-      #location.row <- indice
       location.row <- next.locs.dist[1,1]
       curr.dist <- next.locs.dist[1,2]
       if (verbose) {
@@ -241,14 +240,15 @@ match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, in
 #' @examples
 #'
 #' @export
-find.trip.initial.stop.seq <- function(trajectory.location.data, line.stops.df, verbose=FALSE) {
-  trip.stops <- line.stops.df
+find.trip.initial.stop.seq <- function(trajectory.location.data, initial.stops.df, line.stops.df, verbose=FALSE) {
+  trip.initial.stops <- initial.stops.df
   initial.stop.seq <- numeric()
   
   if (verbose) {
-    print(initial.stop.seq)
     cat("#Location Rows:",nrow(trajectory.location.data),"\n")
   }
+  
+  #print(line.stops.df[,c("stop_id","stop_sequence")])
   
   location.row <- 1
   while(length(initial.stop.seq) == 0) {
@@ -256,20 +256,33 @@ find.trip.initial.stop.seq <- function(trajectory.location.data, line.stops.df, 
       break
     }
     
-    trip.stops$match.initial.point <- points.match(p1.lat = trip.stops$stop_lat,
-                                                   p1.lon = trip.stops$stop_lon,
-                                                   p2.df = trajectory.location.data[location.row,c("longitude","latitude")],
-                                                   threshold = 30)
+#     trip.stops$match.initial.point <- points.match(p1.lat = trip.stops$stop_lat,
+#                                                    p1.lon = trip.stops$stop_lon,
+#                                                    p2.df = trajectory.location.data[location.row,c("longitude","latitude")],
+#                                                    threshold = 100000)
+    trip.initial.stops$point.dist <- distHaversine(trip.initial.stops[,c("stop_lon","stop_lat")],
+                                           trajectory.location.data[location.row,c("longitude","latitude")])
+    
+    trip.initial.stops <- trip.initial.stops %>% ungroup() %>% arrange(point.dist)
+#     print("Trip Initial Stops:")
+#     print(trip.initial.stops)
+    
+    initial.stop.id <- trip.initial.stops[1,]$stop_id
+    initial.stop.seq <- (line.stops.df %>% filter(stop_id == initial.stop.id) %>% select(stop_sequence))$stop_sequence
+    # initial.stop.seq <- trip.stops[trip.stops$match.initial.point,c("stop_sequence")]
+    
     if (verbose) {
-      cat("Location Row#",location.row,"Stop Sequence = ", trip.stops[trip.stops$match.initial.point,]$stop_sequence,"\n")
+      #print(trajectory.location.data[location.row,c("longitude","latitude")])
+      #print(trip.initial.stops)
+      # cat("Location Row#",location.row,"Stop Sequence = ", trip.stops[trip.stops$match.initial.point,]$stop_sequence,"\n")
+      cat("Location Row#",location.row,"Stop Sequence = ", initial.stop.seq,"\n")
     }
-    initial.stop.seq <- trip.stops[trip.stops$match.initial.point,c("stop_sequence")]
     
     if (length(initial.stop.seq) > 1) {
       same.stop <- TRUE
       for (i in 1:(length(initial.stop.seq)-1)) {
-        same.stop <- same.stop & (trip.stops[trip.stops$stop_seq == initial.stop.seq[i],"stop_id"] ==
-                                    trip.stops[trip.stops$stop_seq == initial.stop.seq[(i+1)],"stop_id"])
+        same.stop <- same.stop & (trip.initial.stops[trip.initial.stops$stop_seq == initial.stop.seq[i],"stop_id"] ==
+                                    trip.initial.stops[trip.initial.stops$stop_seq == initial.stop.seq[(i+1)],"stop_id"])
       }
       
       if (same.stop) {
@@ -277,7 +290,7 @@ find.trip.initial.stop.seq <- function(trajectory.location.data, line.stops.df, 
         initial.stop.seq <- initial.stop.seq[1]
       } else {
         if (verbose) cat("Initial stops are not the same (have different stop ids). Starting disambiguation.")
-        initial.stop.seq <- disambiguate.matched.stop(location.row,initial.stop.seq,trajectory.location.data,trip.stops)
+        initial.stop.seq <- disambiguate.matched.stop(location.row,initial.stop.seq,trajectory.location.data,trip.initial.stops)
       }
     }
     location.row <- location.row + 1
@@ -345,7 +358,7 @@ disambiguate.matched.stop <- function(location.row, initial.stops.sequence, trip
 #' @examples
 #'
 #' @export
-match.bus.locations.stops <- function(bus.locations.df,line.stops.df,verbose=FALSE) {
+match.bus.locations.stops <- function(bus.locations.df,line.stops.df,line.initial.stops.df,verbose=FALSE) {
   cat("\n\nMatching locations for bus:",as.character(bus.locations.df[1,]$bus.code),"\n\n")
   
   matched.stops <- data.frame()
@@ -355,7 +368,7 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,verbose=FAL
     return(data.frame())
   }
   
-  initial.stop.seq <- find.trip.initial.stop.seq(bus.locations.df,line.stops.df,verbose)
+  initial.stop.seq <- find.trip.initial.stop.seq(bus.locations.df,line.initial.stops.df,line.stops.df,verbose)
   
   if (length(initial.stop.seq) == 0) return(matched.stops)
   
@@ -442,8 +455,14 @@ match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE
     return(line.matched.stops)
   }
   
-  line.matched.stops <- line.location.data %>% group_by(bus.code) %>%
-    do(match.bus.locations.stops(bus.locations.df = ., line.stops.df=line.trip,verbose)) %>%
+  line.initial.stops <- get.line.initial.stops(stops.df, line=line)
+  
+  line.matched.stops <- line.location.data %>% 
+    group_by(bus.code) %>%
+    do(match.bus.locations.stops(bus.locations.df = ., 
+                                 line.stops.df=line.trip,
+                                 line.initial.stops.df=line.initial.stops,
+                                 verbose)) %>%
     rbind(line.matched.stops,.)
   
   line.matched.stops <- line.matched.stops %>% group_by(bus.code, trip.num) %>%
@@ -541,12 +560,20 @@ prepare.stops.data <- function(gtfs.folder.path) {
 #' @examples
 #'
 #' @export
-get.trips.initial.stops <- function(stops.df) {
+get.trips.initial.stops <- function(stops.df, s_id = 1) {
   trips.initial.stops <- stops.df %>% 
     group_by(route_short_name, trip_id) %>% 
-    filter(stop_sequence == 1 & service_id == 1) %>%
+    filter(stop_sequence == 1 & service_id == s_id) %>%
     mutate(departure_time = fix.timestamp(as.character(departure_time)))
   
+  return(trips.initial.stops)
+}
+
+get.line.initial.stops <- function(stops.df, line, s_id = 1) {
+  trips.initial.stops <- stops.df %>% 
+    filter(route_short_name == line & (stop_sequence == 1 & service_id == s_id)) %>%
+    group_by(stop_id,stop_lon,stop_lat) %>%
+    summarise(count = n())
   return(trips.initial.stops)
 }
 
@@ -570,6 +597,6 @@ match.trip <- function(real.trip.initial.stop, scheduled.trips.initial.stops) {
     arrange(dist,time.diff) %>%
     filter(row_number() == 1) %>%
     select(trip_id,departure_time,dist,time.diff)
-  matched.trip <- cbind(real.trip.initial.stop[c("line.code","bus.code","timestamp","trip.num")],matched.trip)
+  matched.trip <- cbind(real.trip.initial.stop[c("line.code","bus.code","stop_id","timestamp","trip.num")],matched.trip)
   return(matched.trip)
 }
