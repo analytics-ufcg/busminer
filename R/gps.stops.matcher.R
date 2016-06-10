@@ -1,6 +1,7 @@
 require(dplyr)
 require(lubridate)
 require(geosphere)
+require(lazyeval)
 
 #' Checks if the location of two geographical points match
 #'
@@ -599,7 +600,10 @@ get.line.initial.stops <- function(stops.df, line, s_id = 1) {
 #'
 #' @export
 match.trip <- function(real.trip.initial.stop, scheduled.trips.initial.stops) {
-  matched.trip <- scheduled.trips.initial.stops %>% 
+  line.scheduled.trips.initial.stops <- 
+    filter(scheduled.trips.initial.stops, 
+    as.character(route_short_name) == as.character(real.trip.initial.stop$line.code))
+  matched.trip <- line.scheduled.trips.initial.stops %>% 
     rowwise() %>%
     mutate(dist = distHaversine(c(real.trip.initial.stop$stop_lon,real.trip.initial.stop$stop_lat),c(stop_lon,stop_lat)),
            time.diff = abs(difftime(real.trip.initial.stop$timestamp, departure_time, units = "mins"))) %>%
@@ -608,4 +612,38 @@ match.trip <- function(real.trip.initial.stop, scheduled.trips.initial.stops) {
     select(trip_id,departure_time,dist,time.diff)
   matched.trip <- cbind(real.trip.initial.stop[c("line.code","bus.code","stop_id","timestamp","trip.num")],matched.trip)
   return(matched.trip)
+}
+
+#' Matches real trips to GTFS scheduled trips
+#'
+#' This function orders GTFS trips initial stops by their difference in distance and timestamp to the real trips initial stops.
+#'
+#' @param real.trip.initial.stops data frame with data for real trips initial stops for a single line
+#' @param scheduled.trips.initial.stops data frame with data for all scheduled trips for the real trips line
+#'
+#' @return data frame with matched/unmatched trips with real trip line code, bus code, timestamp and trip number, and scheduled trip id, distance and time difference between them
+#'
+#' @examples
+#'
+#' @export
+match.trips <- function(observed.trip.initial.stops, scheduled.trips.initial.stops) {
+  obs.trips <- observed.trip.initial.stops
+  sch.trips <- scheduled.trips.initial.stops
+  
+  names(obs.trips) <- set.column.name.prefix(names(obs.trips),"obs")
+  names(sch.trips) <- set.column.name.prefix(names(sch.trips),"sch")
+  
+  possible.matches <- full_join(sch.trips,obs.trips)
+  
+  possible.matches %>% 
+    ungroup() %>%
+    rowwise() %>%
+    mutate(dist = distHaversine(c(stop_lon,stop_lat),c(stop_lon,stop_lat)),
+           time.diff = abs(difftime(real.trip.initial.stop$timestamp, departure_time, units = "mins")))
+  
+  return(possible.matches)
+}
+
+set.column.name.prefix <- function(column.name, prefix) {
+  new.column.name <- paste(prefix,str_replace(column.name,"_","."),sep=".")
 }
