@@ -587,63 +587,74 @@ get.line.initial.stops <- function(stops.df, line, s_id = 1) {
   return(trips.initial.stops)
 }
 
-#' Matches real trip to GTFS scheduled trip
-#'
-#' This function orders GTFS trips initial stops by their difference in distance and timestamp to the real trip initial stop.
-#'
-#' @param real.trip.initial.stop data frame with data for a single real trip initial stop
-#' @param scheduled.trips.initial.stops data frame with data for all scheduled trips for the real trip line
-#'
-#' @return data frame with matched trips with real trip line code, bus code, timestamp and trip number, and scheduled trip id, distance and time difference between them
-#'
-#' @examples
-#'
-#' @export
-match.trip <- function(real.trip.initial.stop, scheduled.trips.initial.stops) {
-  line.scheduled.trips.initial.stops <- 
-    filter(scheduled.trips.initial.stops, 
-    as.character(route_short_name) == as.character(real.trip.initial.stop$line.code))
-  matched.trip <- line.scheduled.trips.initial.stops %>% 
-    rowwise() %>%
-    mutate(dist = distHaversine(c(real.trip.initial.stop$stop_lon,real.trip.initial.stop$stop_lat),c(stop_lon,stop_lat)),
-           time.diff = abs(difftime(real.trip.initial.stop$timestamp, departure_time, units = "mins"))) %>%
-    arrange(dist,time.diff) %>%
-    filter(row_number() == 1) %>%
-    select(trip_id,departure_time,dist,time.diff)
-  matched.trip <- cbind(real.trip.initial.stop[c("line.code","bus.code","stop_id","timestamp","trip.num")],matched.trip)
-  return(matched.trip)
+set.column.name.prefix <- function(column.name, prefix) {
+  new.column.name <- paste(prefix,str_replace(column.name,"_","."),sep=".")
 }
 
-#' Matches real trips to GTFS scheduled trips
-#'
-#' This function orders GTFS trips initial stops by their difference in distance and timestamp to the real trips initial stops.
-#'
-#' @param real.trip.initial.stops data frame with data for real trips initial stops for a single line
-#' @param scheduled.trips.initial.stops data frame with data for all scheduled trips for the real trips line
-#'
-#' @return data frame with matched/unmatched trips with real trip line code, bus code, timestamp and trip number, and scheduled trip id, distance and time difference between them
-#'
-#' @examples
-#'
-#' @export
-match.trips <- function(observed.trip.initial.stops, scheduled.trips.initial.stops) {
-  obs.trips <- observed.trip.initial.stops
-  sch.trips <- scheduled.trips.initial.stops
+match.scheduled.trip <- function(scheduled.trip, observed.trips, matching.type=1, verbose=FALSE)  {
+  if (verbose) cat("Matching scheduled trip # ",scheduled.trip$sch.trip.id,"\n")
+  obs.trips.comparison <- observed.trips
+  
+  if (matching.type == 1) {
+    obs.trips.comparison <- obs.trips.comparison %>% 
+      rowwise() %>%
+      mutate(same.initial.stop = (obs.stop.id == scheduled.trip$sch.stop.id),
+             time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
+      filter(same.initial.stop & time.diff < 30 & (!obs.paired))
+  } else if (matching.type == 2) {
+    obs.trips.comparison <- obs.trips.comparison %>% 
+      rowwise() %>%
+      mutate(time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
+      filter(time.diff < 30 & (!obs.paired))
+  } else {
+    return(data.frame())
+  }
+  
+  obs.trips.comparison <- obs.trips.comparison %>%
+    ungroup() %>%
+    arrange(obs.timestamp) %>%
+    filter(row_number() == 1)
+}
+
+match.line.trips <- function(line.observed.trips, line.scheduled.trips, matching.type=1, verbose=FALSE) {
+  curr.line <- as.character(line.observed.trips[1,]$line.code)
+  
+  cat("Matching trips for line:",curr.line,"\n")
+  
+  obs.trips <- line.observed.trips
+  sch.trips <- line.scheduled.trips %>% filter(as.character(route_short_name) == curr.line)
+  obs.trips$trip.id <- 1:nrow(obs.trips)
+  obs.trips$paired <- FALSE
+  sch.trips$paired <- FALSE
   
   names(obs.trips) <- set.column.name.prefix(names(obs.trips),"obs")
   names(sch.trips) <- set.column.name.prefix(names(sch.trips),"sch")
   
-  possible.matches <- full_join(sch.trips,obs.trips)
+  matched.trips <- data.frame()
+  #Optimized Test
+  for (i in seq(1:nrow(sch.trips))) {
+    match <- match.scheduled.trip(sch.trips[i,],obs.trips,matching.type,verbose)
+    if (nrow(match) == 1) {
+      obs.trips[obs.trips$obs.trip.id == match$obs.trip.id,c("obs.paired")] = TRUE
+      sch.trips[i,c("sch.paired")] = TRUE
+      matched.trips <- rbind(matched.trips,cbind(match,sch.trips[i,]))
+    }
+  }
   
-  possible.matches %>% 
-    ungroup() %>%
-    rowwise() %>%
-    mutate(dist = distHaversine(c(stop_lon,stop_lat),c(stop_lon,stop_lat)),
-           time.diff = abs(difftime(real.trip.initial.stop$timestamp, departure_time, units = "mins")))
+  unmatched.sch.trips <- sch.trips %>% ungroup %>% filter(!sch.paired)
+  unmatched.obs.trips <- obs.trips %>% ungroup %>% filter(!obs.paired)
   
-  return(possible.matches)
+  matched.trips <- plyr::rbind.fill(matched.trips,unmatched.sch.trips)
+  matched.trips <- plyr::rbind.fill(matched.trips,unmatched.obs.trips)
+  
+  return(matched.trips)
 }
 
-set.column.name.prefix <- function(column.name, prefix) {
-  new.column.name <- paste(prefix,str_replace(column.name,"_","."),sep=".")
+match.trips <- function(scheduled.trips.initial.stops, observed.trips.initial.stops,matching.type=1,verbose=FALSE) {
+  matched.trips <- data.frame()
+  matched.trips <- observed.trips.initial.stops %>% 
+    ungroup() %>%
+    group_by(line.code) %>%
+    do(match.line.trips(.,scheduled.trips.initial.stops,matching.type,verbose)) %>%
+    rbind(matched.trips,.)
 }
