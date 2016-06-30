@@ -656,5 +656,6 @@ match.trips <- function(scheduled.trips.initial.stops, observed.trips.initial.st
     ungroup() %>%
     group_by(line.code) %>%
     do(match.line.trips(.,scheduled.trips.initial.stops,matching.type,verbose)) %>%
+    ungroup() %>%
     rbind(matched.trips,.)
 }
