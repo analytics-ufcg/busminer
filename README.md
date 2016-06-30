@@ -1,5 +1,5 @@
-# gps-stops-matcher
-An R package to help matching GPS bus trajectories and GTFS bus stops. 
+# busminer
+`busminer` is an R package to help matching GPS bus trajectories and GTFS bus stops. 
 
 ## Installation
 ```
