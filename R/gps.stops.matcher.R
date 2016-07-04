@@ -517,8 +517,8 @@ match.locations.stops <- function(location.data,stops.df,verbose=FALSE) {
 #' @export
 prepare.gps.data <- function(bus.gps.csv.file.path) {
   location.data <- read.csv(bus.gps.csv.file.path)
-  names(location.data) <- c("bus.code","latitude","longitude","date","line.code")
-  location.data$timestamp <- parse_date_time(location.data$date, "ymd HMS", tz = "GMT-3")
+  names(location.data) <- c("bus.code","latitude","longitude","timestamp","line.code")
+  location.data$timestamp <- parse_date_time(location.data$timestamp, "ymd HMS", tz = "GMT-3")
   
   return(location.data)
 }
