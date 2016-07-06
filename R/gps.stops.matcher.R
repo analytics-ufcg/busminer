@@ -523,6 +523,24 @@ prepare.gps.data <- function(bus.gps.csv.file.path) {
   return(location.data)
 }
 
+#' pre-processes GPS data
+#'
+#' This function parses GPS data timestamps into POSIXct date-time objects
+#'
+#' @param gps.data GPS observations data frame
+#'
+#' @return data frame with GPS data
+#'
+#' @examples
+#'
+#' @export
+prepare.gps.data <- function(gps.data) {
+  location.data <- gps.data
+  location.data$timestamp <- parse_date_time(location.data$timestamp, "ymd HMS", tz = "GMT-3")
+  
+  return(location.data)
+}
+
 fix.timestamp <- function(timestamp) {
   splitted.time <- strsplit(timestamp,":")[[1]]
   splitted.time[1] <- ifelse(splitted.time[1] == "24","00",splitted.time[1])
@@ -659,3 +677,53 @@ match.trips <- function(scheduled.trips.initial.stops, observed.trips.initial.st
     ungroup() %>%
     rbind(matched.trips,.)
 }
+
+#' Builds a map with gps points locations for a specified line and bus
+#'
+#'  This function filters the input GPS data points, selecting observations with the specified line and bus codes and plots these points in a Google Map.
+#'
+#' @param city.name City name where points are located
+#' @param gps.data GPS data frame with GPS points observations
+#' @param lcode line code whose observations should be plotted
+#' @param bcode bus code whose observations should be plotted
+#' @param num.points number of points to be plotted (in ascending order of appearance)
+#'
+#' @return plot with selected line, bus and number of points GPS data
+#'
+#' @examples
+#'
+#' @export
+plot.gps.data <- function(city.name, gps.data, lcode, bcode, num.points=NULL) {
+  selected.gps.data <- gps.data %>% filter(line.code == lcode & bus.code == bcode)
+  if (!missing(num.points)) {
+    selected.gps.data <- selected.gps.data %>% head(num.points)
+  }
+  map <- qmap(city.name, zoom = 12, maptype = 'hybrid')
+  plot <- map + geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5)
+  return(plot)
+}
+
+#' Builds a map with gps points locations for a specified line and bus
+#'
+#'  This function filters the input GPS data points, selecting observations with the specified line and bus codes and plots these points in a Google Map.
+#'
+#' @param city.name City name where points are located
+#' @param gps.data GPS data frame with GPS points observations
+#' @param lcode line code whose observations should be plotted
+#' @param bcode bus code whose observations should be plotted
+#' @param num.points number of points to be plotted (in ascending order of appearance)
+#'
+#' @return plot with selected line, bus and number of points GPS data
+#'
+#' @examples
+#'
+#' @export
+# plot.stops.data <- function(city.name, stops.data, lcode, num.points=NULL) {
+#   selected.gps.data <- stops.data %>% filter(route_short_name == lcode)
+#   if (!missing(num.points)) {
+#     selected.gps.data <- selected.gps.data %>% head(num.points)
+#   }
+#   map <- qmap(city.name, zoom = 12, maptype = 'hybrid')
+#   plot <- map + geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5)
+#   return(plot)
+# }
