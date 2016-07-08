@@ -715,3 +715,9 @@ plot.stops.data <- function(city.name, stops.data, lcode, trip.id, num.points=NU
   plot <- map + geom_point(data = selected.stops.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5)
   return(plot)
 }
+
+set.stops.times.arrival.date <- function(stops.df, date.str) {
+  stops.df.with.date <- stops.df %>% 
+    mutate(arrival_time = parse_date_time(paste(date.str, as.character(arrival_time)),"ymd HMS", tz = "GMT-3"),
+           departure_time = parse_date_time(paste(date.str, as.character(departure_time)),"ymd HMS", tz = "GMT-3"))
+}
