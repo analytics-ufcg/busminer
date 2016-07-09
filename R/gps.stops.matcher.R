@@ -2,6 +2,7 @@ require(dplyr)
 require(lubridate)
 require(geosphere)
 require(lazyeval)
+require(ggmap)
 
 #' Checks if the location of two geographical points match
 #'
@@ -166,6 +167,9 @@ match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, in
   cat("\nMatching GPS and GTFS data for trip#",trip.locations.df[1,]$trip.num,"\n")
   
   if (verbose) cat("Number of locations for trip: ",nrow(trip.locations.df),"\n")
+  # print(plot.gps.data("Curitiba",trip.locations.df,"022","BL301") +
+  #         geom_point(data=stops.locations.df, aes(x=stop_lon, y=stop_lat), color="green", size=3, alpha=0.5) +
+  #         geom_text(data=stops.locations.df, aes(x=stop_lon, y=stop_lat, label=stop_sequence), color="black", fontface="bold", size=3))
   
   stops.locations.df$location.match <- NA
   max.optimal.dist.threshold <- 30
@@ -207,10 +211,14 @@ match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, in
       }
       
       if (curr.dist > max.acceptable.dist.threshold) {
-        if (verbose) cat("Distance to stop #",stop.row,"=",curr.dist,"above acceptable threshold.\n")
-        print("It seems the trip is shorter than usual. Check the data tables for more details.")
-        print("Exiting matching!")
-        break
+        if (verbose) {
+          cat("Distance to stop #",stop.row,"=",curr.dist,"above acceptable threshold.\n")
+          cat("Jumping to next stop...\n")
+        }
+        next
+        # print("It seems the trip is shorter than usual. Check the data tables for more details.")
+        # print("Exiting matching!")
+        # break
       }
     }
     
@@ -223,9 +231,21 @@ match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, in
   
   trip.locations.df$location.id <- 1:nrow(trip.locations.df)
   matched.stops <- merge(x = stops.locations.df,y = trip.locations.df,by.x = "location.match", by.y="location.id")
+  matched.stops$matching.dist <- round(distHaversine(matched.stops[,c("longitude","latitude")],
+                                                     matched.stops[,c("stop_lon","stop_lat")]))
   
-  select(matched.stops, stop_id, stop_sequence, stop_name, stop_lat, stop_lon, arrival_time, route_short_name, route_long_name,
-         bus.code, latitude, longitude, timestamp, trip.num)
+  cat("Num matched stops:",nrow(matched.stops),"\n")
+  
+  # map <- qmap('Curitiba', zoom = 12, maptype = 'hybrid') +
+  #   geom_point(data = matched.stops, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5) +
+  #   geom_point(data = matched.stops, aes(x = stop_lon, y = stop_lat), color="green", size=3, alpha=0.5) +
+  #   geom_text(data = matched.stops, aes(x = stop_lon, y = stop_lat, label=matching.dist), color="black", fontface="bold", size=4, hjust=-0.5)
+  # print(map)
+  
+  matched.stops <- matched.stops %>% select(stop_id, stop_sequence, stop_name, stop_lat, stop_lon, route_short_name, 
+                                            route_long_name, bus.code, latitude, longitude, timestamp, trip.num,matching.dist)
+  
+  return(matched.stops)
 }
 
 #' Returns initial stop sequence for GPS bus trajectory
@@ -270,6 +290,58 @@ find.trip.initial.stop.seq <- function(trajectory.location.data, initial.stops.d
     initial.stop.id <- trip.initial.stops[1,]$stop_id
     initial.stop.seq <- (line.stops.df %>% filter(stop_id == initial.stop.id) %>% select(stop_sequence))$stop_sequence
     # initial.stop.seq <- trip.stops[trip.stops$match.initial.point,c("stop_sequence")]
+    
+    if (verbose) {
+      #print(trajectory.location.data[location.row,c("longitude","latitude")])
+      #print(trip.initial.stops)
+      # cat("Location Row#",location.row,"Stop Sequence = ", trip.stops[trip.stops$match.initial.point,]$stop_sequence,"\n")
+      cat("Location Row#",location.row,"Stop Sequence = ", initial.stop.seq,"\n")
+    }
+    
+    if (length(initial.stop.seq) > 1) {
+      same.stop <- TRUE
+      for (i in 1:(length(initial.stop.seq)-1)) {
+        same.stop <- same.stop & (line.stops.df[line.stops.df$stop_seq == initial.stop.seq[i],"stop_id"] ==
+                                    line.stops.df[line.stops.df$stop_seq == initial.stop.seq[(i+1)],"stop_id"])
+      }
+      
+      if (same.stop) {
+        if (verbose) cat("Initial stops are the same (have the same stop id). Keeping the first one.")
+        initial.stop.seq <- initial.stop.seq[1]
+      } else {
+        if (verbose) cat("Initial stops are not the same (have different stop ids). Starting disambiguation.")
+        initial.stop.seq <- disambiguate.matched.stop(location.row,initial.stop.seq,trajectory.location.data,line.stops.df)
+      }
+    }
+    location.row <- location.row + 1
+  }
+  
+  return(initial.stop.seq)
+}
+
+find.trip.initial.stop.seq2 <- function(trajectory.location.data, initial.stops.df, line.stops.df, verbose=FALSE) {
+  trip.initial.stops <- line.stops.df
+  initial.stop.seq <- numeric()
+  
+  if (verbose) {
+    cat("#Location Rows:",nrow(trajectory.location.data),"\n")
+    # print(trip.initial.stops)
+  }
+  
+  location.row <- 1
+  while(length(initial.stop.seq) == 0) {
+    if (location.row > nrow(trajectory.location.data)) {
+      break
+    }
+    
+    trip.initial.stops$point.dist <- distHaversine(trip.initial.stops[,c("stop_lon","stop_lat")],
+                                                   trajectory.location.data[location.row,c("longitude","latitude")])
+    
+    trip.initial.stops <- trip.initial.stops %>% ungroup() %>% arrange(point.dist)
+    
+    if (trip.initial.stops[1,]$point.dist < 30) {
+      initial.stop.seq <- trip.initial.stops[1,]$stop_sequence
+    }
     
     if (verbose) {
       #print(trajectory.location.data[location.row,c("longitude","latitude")])
@@ -368,9 +440,11 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,line.initia
     return(matched.stops)
   }
   
-  initial.stop.seq <- find.trip.initial.stop.seq(bus.locations.df,line.initial.stops.df,line.stops.df,verbose)
+  # initial.stop.seq <- find.trip.initial.stop.seq(bus.locations.df,line.initial.stops.df,line.stops.df,verbose)
+  initial.stop.seq <- find.trip.initial.stop.seq2(bus.locations.df,line.initial.stops.df,line.stops.df,verbose)
   
   if (length(initial.stop.seq) == 0) return(matched.stops)
+  cat("Initial stop id:",line.stops.df[initial.stop.seq,]$stop_id,"\n")
   
   #Retrieving Trip Initial Points
   trip.initial.point <- data.frame(longitude=line.stops.df[initial.stop.seq,]$stop_lon, latitude=line.stops.df[initial.stop.seq,]$stop_lat)
@@ -394,17 +468,20 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,line.initia
   bus.locations.df <- bus.locations.df %>% rowwise() %>% mutate(trip.num = get.trip.number(timestamp, trip.initial.points))
   
   #Matching trip stops
-  matched.stops <- bus.locations.df %>% ungroup() %>% group_by(trip.num) %>%
+  matched.stops <- bus.locations.df %>% 
+    ungroup() %>% 
+    group_by(trip.num) %>% 
+    filter(trip.num >= 1) %>%
     do(match.trip.locations.stops(trip.locations.df = .,
                                   stops.locations.df = line.stops.df,
                                   init.stop.seq = initial.stop.seq,verbose)) %>%
+    ungroup() %>%
     rbind(matched.stops,.)
   
-  n.matched.trips <- length(unique(matched.stops$trip.num))
-  n.trips <- length(unique(bus.locations.df$trip.num))
-  
-  matched.stops$num.trips <- rep(n.trips,nrow(matched.stops))
-  matched.stops$num.matched.trips <- rep(n.matched.trips,nrow(matched.stops))
+  # n.matched.trips <- length(unique(matched.stops$trip.num))
+  # n.trips <- length(unique(bus.locations.df$trip.num))
+  # matched.stops$num.trips <- rep(n.trips,nrow(matched.stops))
+  # matched.stops$num.matched.trips <- rep(n.matched.trips,nrow(matched.stops))
   
   return(matched.stops)
 }
@@ -468,6 +545,7 @@ match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE
                                  line.stops.df=line.trip,
                                  line.initial.stops.df=line.initial.stops,
                                  verbose)) %>%
+    ungroup() %>%
     rbind(line.matched.stops,.)
   
   if (nrow(line.matched.stops) == 0) {
@@ -475,8 +553,10 @@ match.line.locations.stops <- function(line.location.data,stops.df,verbose=FALSE
     return(line.matched.stops)
   }
   
-  line.matched.stops <- line.matched.stops %>% group_by(bus.code, trip.num) %>%
-    mutate(num.matched.stops = n())
+  line.matched.stops <- line.matched.stops %>%
+    ungroup() %>%
+    group_by(bus.code, trip.num)
+  # %>% mutate(num.matched.stops = n())
   # %>% filter(num.matched.stops >= nrow(line.trip)/3)
   
   line.matched.stops <- line.matched.stops %>% group_by(bus.code, trip.num) %>% arrange(bus.code,trip.num,timestamp)
@@ -543,9 +623,8 @@ prepare.gps.data <- function(gps.data) {
 }
 
 fix.timestamp <- function(timestamp) {
-  splitted.time <- strsplit(timestamp,":")[[1]]
-  splitted.time[1] <- ifelse(splitted.time[1] == "24","00",splitted.time[1])
-  return(paste(splitted.time,collapse=":"))
+  fixed.timestamp <- gsub("24:","00:",timestamp)
+  return(fixed.timestamp)
 }
 
 #' Reads and pre-processes stops data
@@ -573,6 +652,8 @@ prepare.stops.data <- function(gtfs.folder.path) {
   stops.detailed <- stops.detailed %>%
     select(trip_id, arrival_time, departure_time, stop_id, stop_sequence, service_id, trip_headsign, direction_id, route_id, route_short_name, route_long_name,
            route_type, route_color, stop_name, stop_lat, stop_lon) %>%
+    mutate(arrival_time = fix.timestamp(arrival_time),
+           departure_time = fix.timestamp(departure_time)) %>%
     arrange(route_short_name, trip_id, stop_sequence)
   
   return(stops.detailed)
@@ -700,20 +781,22 @@ plot.gps.data <- function(city.name, gps.data, lcode, bcode, num.points=NULL) {
   if (!missing(num.points)) {
     selected.gps.data <- selected.gps.data %>% head(num.points)
   }
-  map <- qmap(city.name, zoom = 12, maptype = 'hybrid')
-  plot <- map + geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5)
-  return(plot)
+  map <- qmap(city.name, zoom = 12, maptype = 'hybrid') +
+    geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5) +
+    geom_text(data = selected.gps.data, aes(x = longitude, y = latitude, label = timestamp), color="white", size = 3, fontface="bold", vjust = 0, hjust = -0.2)
+  return(map)
 }
 
 
 plot.stops.data <- function(city.name, stops.data, lcode, trip.id, num.points=NULL) {
   selected.stops.data <- stops.data %>% filter(route_short_name == lcode & trip_id == trip.id)
   if (!missing(num.points)) {
-    selected.gps.data <- selected.gps.data %>% head(num.points)
+    selected.stops.data <- selected.stops.data %>% head(num.points)
   }
-  map <- qmap(city.name, zoom = 12, maptype = 'hybrid')
-  plot <- map + geom_point(data = selected.stops.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5)
-  return(plot)
+  map <- qmap(city.name, zoom = 12, maptype = 'hybrid') +
+    geom_point(data = selected.stops.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5) +
+    geom_text(data = selected.stops.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = 0, hjust = -0.5)
+  return(map)
 }
 
 set.stops.times.arrival.date <- function(stops.df, date.str) {
