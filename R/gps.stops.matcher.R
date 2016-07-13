@@ -799,6 +799,19 @@ plot.stops.data <- function(city.name, stops.data, lcode, trip.id, num.points=NU
   return(map)
 }
 
+plot.stop.matches.data <- function(city.name, matches.data, lcode, bcode, trip.num, num.points=NULL) {
+  selected.stop.matches.data <- matches.data %>% filter(route_short_name == lcode & bus.code == bcode & trip.num == trip.num)
+  if (!missing(num.points)) {
+    selected.stop.matches.data <- selected.stop.matches.data %>% head(num.points)
+  }
+  map <- qmap(city.name, zoom = 12, maptype = 'hybrid') +
+    geom_point(data = selected.stop.matches.data, aes(x = longitude, y = latitude), color="green", size=3, alpha=0.5) +
+    geom_point(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat), color="red", size=3, alpha=0.5) +
+    geom_text(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = -0.5, hjust = 0) +
+    geom_text(data = selected.stop.matches.data, aes(x = longitude, y = latitude, label = timestamp), color="white", size = 3, fontface="bold", vjust = +0.5, hjust = 0)
+  return(map)
+}
+
 set.stops.times.arrival.date <- function(stops.df, date.str) {
   stops.df.with.date <- stops.df %>% 
     mutate(arrival_time = parse_date_time(paste(date.str, as.character(arrival_time)),"ymd HMS", tz = "GMT-3"),
