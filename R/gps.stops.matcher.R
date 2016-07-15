@@ -683,6 +683,14 @@ get.line.initial.stops <- function(stops.df, line) {
   return(trips.initial.stops)
 }
 
+get.observed.trips.initial.stops <- function(observed.trips) {
+  observed.trips.initial.stops <- observed.trips %>% 
+    group_by(line.code, bus.code, trip.num) %>% 
+    arrange(timestamp)  %>%
+    filter(row_number() == 1)
+  return(observed.trips.initial.stops)
+}
+
 set.column.name.prefix <- function(column.name, prefix) {
   new.column.name <- paste(prefix,str_replace(column.name,"_","."),sep=".")
 }
@@ -719,9 +727,10 @@ match.line.trips <- function(line.observed.trips, line.scheduled.trips, matching
   
   obs.trips <- line.observed.trips
   sch.trips <- line.scheduled.trips %>% filter(as.character(route_short_name) == curr.line)
+  
   obs.trips$trip.id <- 1:nrow(obs.trips)
-  obs.trips$paired <- FALSE
-  sch.trips$paired <- FALSE
+  obs.trips$paired <- rep(FALSE,nrow(obs.trips))
+  sch.trips$paired <- rep(FALSE,nrow(sch.trips))
   
   names(obs.trips) <- set.column.name.prefix(names(obs.trips),"obs")
   names(sch.trips) <- set.column.name.prefix(names(sch.trips),"sch")
@@ -746,12 +755,12 @@ match.line.trips <- function(line.observed.trips, line.scheduled.trips, matching
   return(matched.trips)
 }
 
-match.trips <- function(scheduled.trips.initial.stops, observed.trips.initial.stops,matching.type=1,verbose=FALSE) {
+match.trips.initial.stops <- function(observed.trips.initial.stops, scheduled.trips.initial.stops, matching.type=1,verbose=FALSE) {
   day.service.id <- observed.trips.initial.stops[1,c("service_id")]
-  cat("day.service.id:",day.service.id,"\n")
+  if(verbose) cat("day.service.id:",day.service.id,"\n")
   scheduled.trips <- scheduled.trips.initial.stops %>% filter(service_id == day.service.id)
   
-  cat("Scheduled_trips size:",nrow(scheduled.trips),"\n")
+  if(verbose) cat("Scheduled_trips size:",nrow(scheduled.trips),"\n")
   
   matched.trips <- data.frame()
   matched.trips <- observed.trips.initial.stops %>% 
@@ -760,6 +769,44 @@ match.trips <- function(scheduled.trips.initial.stops, observed.trips.initial.st
     do(match.line.trips(.,scheduled.trips,matching.type,verbose)) %>%
     ungroup() %>%
     rbind(matched.trips,.)
+}
+
+build.service.ids.df <- function(gtfs.folder.path) {
+  file.path <- paste(gtfs.folder.path,"calendar.txt",sep="/")
+  service.ids <- melt(read.csv(file.path), id.vars = c("service_id","start_date","end_date")) %>%
+    filter(value == 1 & service_id != 4) %>% 
+    select(variable, service_id)
+  return(service.ids)
+}
+
+match.trips <- function(stop.matches,stops.gtfs.data,service.ids,matching.type=1,verbose=FALSE) {
+  
+  if(verbose) print("Parsing timestamp...")
+  
+  observed.trips <- stop.matches
+  observed.trips$timestamp <- parse_date_time(observed.trips$timestamp, "ymd HMS", tz = "GMT-3")
+  
+  if(verbose) print("Adding service_id to observed trips...")
+  
+  observed.trips.initial.stops <- get.observed.trips.initial.stops(observed.trips)
+  observed.trips.initial.stops$weekday <- tolower(wday(observed.trips.initial.stops$timestamp, label=TRUE, abbr=FALSE))
+  observed.trips.initial.stops <- merge(observed.trips.initial.stops, service.ids, by.x="weekday",by.y="variable")
+  
+  if(verbose) print("Retrieving scheduled trips initial stops...")
+  
+  scheduled.trips.initial.stops <- get.trips.initial.stops(stops.gtfs.data)
+  
+  if(verbose) print("Setting date...")
+  
+  observed.data.date <- strsplit(as.character(observed.trips.initial.stops[1,]$timestamp)," ")[[1]][1]
+  scheduled.trips.initial.stops$departure_time <- parse_date_time(paste(
+      observed.data.date, 
+      as.character(scheduled.trips.initial.stops$departure_time)),
+    "ymd HMS", tz = "GMT-3")
+  
+  if(verbose) print("Matching trips...")
+  
+  match.trips.initial.stops(observed.trips.initial.stops,scheduled.trips.initial.stops,matching.type,verbose)
 }
 
 #' Builds a map with gps points locations for a specified line and bus
@@ -815,7 +862,7 @@ plot.stop.matches.data <- function(city.name, matches.data, lcode, bcode, trip.n
   return(map)
 }
 
-set.stops.times.arrival.date <- function(stops.df, date.str) {
+set.stops.times.date <- function(stops.df, date.str) {
   stops.df.with.date <- stops.df %>% 
     mutate(arrival_time = parse_date_time(paste(date.str, as.character(arrival_time)),"ymd HMS", tz = "GMT-3"),
            departure_time = parse_date_time(paste(date.str, as.character(departure_time)),"ymd HMS", tz = "GMT-3"))
