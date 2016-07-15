@@ -435,11 +435,6 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,line.initia
   
   matched.stops <- data.frame()
   
-  if (nrow(bus.locations.df) < 100) {
-    cat("Current bus has too few GPS observations:", nrow(bus.locations.df))
-    return(matched.stops)
-  }
-  
   # initial.stop.seq <- find.trip.initial.stop.seq(bus.locations.df,line.initial.stops.df,line.stops.df,verbose)
   initial.stop.seq <- find.trip.initial.stop.seq2(bus.locations.df,line.initial.stops.df,line.stops.df,verbose)
   
@@ -670,19 +665,19 @@ prepare.stops.data <- function(gtfs.folder.path) {
 #' @examples
 #'
 #' @export
-get.trips.initial.stops <- function(stops.df, s_id = 1) {
+get.trips.initial.stops <- function(stops.df) {
   trips.initial.stops <- stops.df %>% 
     group_by(route_short_name, trip_id) %>% 
     mutate(num.stops = n()) %>%
-    filter(stop_sequence == 1 & service_id == s_id) %>%
+    filter(stop_sequence == 1) %>%
     mutate(departure_time = fix.timestamp(as.character(departure_time)))
   
   return(trips.initial.stops)
 }
 
-get.line.initial.stops <- function(stops.df, line, s_id = 1) {
+get.line.initial.stops <- function(stops.df, line) {
   trips.initial.stops <- stops.df %>% 
-    filter(route_short_name == line & (stop_sequence == 1 & service_id == s_id)) %>%
+    filter(route_short_name == line & (stop_sequence == 1)) %>%
     group_by(stop_id,stop_lon,stop_lat) %>%
     summarise(count = n())
   return(trips.initial.stops)
@@ -752,11 +747,17 @@ match.line.trips <- function(line.observed.trips, line.scheduled.trips, matching
 }
 
 match.trips <- function(scheduled.trips.initial.stops, observed.trips.initial.stops,matching.type=1,verbose=FALSE) {
+  day.service.id <- observed.trips.initial.stops[1,c("service_id")]
+  cat("day.service.id:",day.service.id,"\n")
+  scheduled.trips <- scheduled.trips.initial.stops %>% filter(service_id == day.service.id)
+  
+  cat("Scheduled_trips size:",nrow(scheduled.trips),"\n")
+  
   matched.trips <- data.frame()
   matched.trips <- observed.trips.initial.stops %>% 
     ungroup() %>%
     group_by(line.code) %>%
-    do(match.line.trips(.,scheduled.trips.initial.stops,matching.type,verbose)) %>%
+    do(match.line.trips(.,scheduled.trips,matching.type,verbose)) %>%
     ungroup() %>%
     rbind(matched.trips,.)
 }
@@ -776,35 +777,37 @@ match.trips <- function(scheduled.trips.initial.stops, observed.trips.initial.st
 #' @examples
 #'
 #' @export
-plot.gps.data <- function(city.name, gps.data, lcode, bcode, num.points=NULL) {
+plot.gps.data <- function(city.name, gps.data, lcode, bcode, map.zoom=12, num.points=NULL) {
   selected.gps.data <- gps.data %>% filter(line.code == lcode & bus.code == bcode)
   if (!missing(num.points)) {
     selected.gps.data <- selected.gps.data %>% head(num.points)
   }
+  selected.gps.data$row.num <- 1:nrow(selected.gps.data)
   map <- qmap(city.name, zoom = 12, maptype = 'hybrid') +
     geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5) +
-    geom_text(data = selected.gps.data, aes(x = longitude, y = latitude, label = timestamp), color="white", size = 3, fontface="bold", vjust = 0, hjust = -0.2)
+    geom_text(data = selected.gps.data, aes(x = longitude, y = latitude, label = row.num), color="black", size = 5, vjust = 0, hjust = -0.2)
   return(map)
 }
 
 
-plot.stops.data <- function(city.name, stops.data, lcode, trip.id, num.points=NULL) {
+plot.stops.data <- function(city.name, stops.data, lcode, trip.id, num.points=NULL, map.zoom=12) {
   selected.stops.data <- stops.data %>% filter(route_short_name == lcode & trip_id == trip.id)
   if (!missing(num.points)) {
     selected.stops.data <- selected.stops.data %>% head(num.points)
   }
-  map <- qmap(city.name, zoom = 12, maptype = 'hybrid') +
+  map <- qmap(city.name, zoom = map.zoom, maptype = 'hybrid') +
     geom_point(data = selected.stops.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5) +
     geom_text(data = selected.stops.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = 0, hjust = -0.5)
   return(map)
 }
 
-plot.stop.matches.data <- function(city.name, matches.data, lcode, bcode, trip.num, num.points=NULL) {
+plot.stop.matches.data <- function(city.name, matches.data, lcode, bcode, trip.num, num.points=NULL, map.zoom=12) {
   selected.stop.matches.data <- matches.data %>% filter(route_short_name == lcode & bus.code == bcode & trip.num == trip.num)
   if (!missing(num.points)) {
     selected.stop.matches.data <- selected.stop.matches.data %>% head(num.points)
   }
-  map <- qmap(city.name, zoom = 12, maptype = 'hybrid') +
+  
+  map <- qmap(city.name, zoom = map.zoom, maptype = 'hybrid') +
     geom_point(data = selected.stop.matches.data, aes(x = longitude, y = latitude), color="green", size=3, alpha=0.5) +
     geom_point(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat), color="red", size=3, alpha=0.5) +
     geom_text(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = -0.5, hjust = 0) +
