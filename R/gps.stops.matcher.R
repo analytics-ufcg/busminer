@@ -686,6 +686,7 @@ get.line.initial.stops <- function(stops.df, line) {
 get.observed.trips.initial.stops <- function(observed.trips) {
   observed.trips.initial.stops <- observed.trips %>% 
     group_by(line.code, bus.code, trip.num) %>% 
+    mutate(num.stops = n()) %>%
     arrange(timestamp)  %>%
     filter(row_number() == 1)
   return(observed.trips.initial.stops)
@@ -695,29 +696,77 @@ set.column.name.prefix <- function(column.name, prefix) {
   new.column.name <- paste(prefix,str_replace(column.name,"_","."),sep=".")
 }
 
+match.trips.by.time <- function(observed.trips, scheduled.trip) {
+  obs.trips.comparison <- observed.trips %>% 
+    rowwise() %>%
+    mutate(time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
+    filter(time.diff < 30 & (!obs.paired)) %>%
+    ungroup() %>%
+    arrange(time.diff)
+}
+
+match.trips.by.time.initial.stop.1 <- function(observed.trips, scheduled.trip, dist.threshold = 400, time.diff.threshold = 30) {
+  obs.trips.comparison <- observed.trips %>% 
+    rowwise() %>%
+    mutate(initial.stop.dist = distHaversine(c(obs.longitude,obs.latitude),
+                                             scheduled.trip[1,c("sch.stop.lon","sch.stop.lat")]),
+           time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
+    filter((initial.stop.dist < dist.threshold & time.diff < time.diff.threshold) & (!obs.paired)) %>%
+    ungroup() %>%
+    arrange(initial.stop.dist,time.diff)
+}
+
+match.trips.by.time.initial.stop.2 <- function(observed.trips, scheduled.trip) {
+  obs.trips.comparison <- observed.trips %>% 
+    rowwise() %>%
+    mutate(same.initial.stop = (obs.stop.id == scheduled.trip$sch.stop.id),
+           time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
+    filter(same.initial.stop & time.diff < 30 & (!obs.paired)) %>%
+    ungroup() %>%
+    arrange(time.diff)
+}
+
+match.trips.by.time.num.stops <- function(observed.trips, scheduled.trip) {
+  obs.trips.comparison <- observed.trips %>% 
+    rowwise() %>%
+    mutate(number.of.stops.diff = abs(obs.num.stops - scheduled.trip$sch.num.stops),
+           time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
+    filter(time.diff < 30 & (!obs.paired)) %>%
+    ungroup() %>%
+    arrange(number.of.stops.diff,time.diff)
+}
+
+match.trips.by.time.initial.stop.num.stops <- function(observed.trips, scheduled.trip) {
+  obs.trips.comparison <- observed.trips %>% 
+    rowwise() %>%
+    mutate(initial.stop.dist = distHaversine(c(obs.longitude,obs.latitude),
+                                             scheduled.trip[1,c("sch.stop.lon","sch.stop.lat")]),
+           number.of.stops.diff = abs(obs.num.stops - scheduled.trip$sch.num.stops),
+           time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
+    filter(initial.stop.dist < 400 & time.diff < 30 & (!obs.paired)) %>%
+    ungroup() %>%
+    arrange(initial.stop.dist,number.of.stops.diff,time.diff)
+}
+
 match.scheduled.trip <- function(scheduled.trip, observed.trips, matching.type=1, verbose=FALSE)  {
   if (verbose) cat("Matching scheduled trip # ",scheduled.trip$sch.trip.id,"\n")
-  obs.trips.comparison <- observed.trips
   
   if (matching.type == 1) {
-    obs.trips.comparison <- obs.trips.comparison %>% 
-      rowwise() %>%
-      mutate(same.initial.stop = (obs.stop.id == scheduled.trip$sch.stop.id),
-             time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
-      filter(same.initial.stop & time.diff < 30 & (!obs.paired))
+    obs.trips.comparison <- match.trips.by.time(observed.trips,scheduled.trip)
   } else if (matching.type == 2) {
-    obs.trips.comparison <- obs.trips.comparison %>% 
-      rowwise() %>%
-      mutate(time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
-      filter(time.diff < 30 & (!obs.paired))
-  } else {
+    obs.trips.comparison <- match.trips.by.time.initial.stop.2(observed.trips,scheduled.trip)
+  } else if (matching.type == 3) {
+    obs.trips.comparison <- match.trips.by.time.initial.stop.1(observed.trips,scheduled.trip)
+  } else if (matching.type == 4) {
+    obs.trips.comparison <- match.trips.by.time.num.stops(observed.trips,scheduled.trip)
+  } else if (matching.type == 5) {
+    obs.trips.comparison <- match.trips.by.time.initial.stop.num.stops(observed.trips,scheduled.trip)
+  }else {
     return(data.frame())
   }
   
-  obs.trips.comparison <- obs.trips.comparison %>%
-    ungroup() %>%
-    arrange(obs.timestamp) %>%
-    filter(row_number() == 1)
+  # print(obs.trips.comparison[1:10,c("initial.stop.dist","time.diff")])
+  obs.trips.comparison <- obs.trips.comparison %>% filter(row_number() == 1)
 }
 
 match.line.trips <- function(line.observed.trips, line.scheduled.trips, matching.type=1, verbose=FALSE) {
