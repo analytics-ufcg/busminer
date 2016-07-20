@@ -3,6 +3,8 @@ require(lubridate)
 require(geosphere)
 require(lazyeval)
 require(ggmap)
+require(reshape2)
+require(stringr)
 
 #' Checks if the location of two geographical points match
 #'
@@ -692,8 +694,16 @@ get.observed.trips.initial.stops <- function(observed.trips) {
   return(observed.trips.initial.stops)
 }
 
+get.obs.trips <- function(observed.trips) {
+  observed.trips.ids <- observed.trips %>%
+    group_by(line.code, bus.code, trip.num) %>% 
+    summarise(trip.size = n()) %>%
+    ungroup() %>%
+    mutate(trip.id = row_number())
+}
+
 set.column.name.prefix <- function(column.name, prefix) {
-  new.column.name <- paste(prefix,str_replace(column.name,"_","."),sep=".")
+  new.column.name <- paste(prefix,str_replace_all(column.name,"_","."),sep=".")
 }
 
 match.trips.by.time <- function(observed.trips, scheduled.trip) {
@@ -729,7 +739,7 @@ match.trips.by.time.initial.stop.2 <- function(observed.trips, scheduled.trip) {
 match.trips.by.time.num.stops <- function(observed.trips, scheduled.trip) {
   obs.trips.comparison <- observed.trips %>% 
     rowwise() %>%
-    mutate(number.of.stops.diff = abs(obs.num.stops - scheduled.trip$sch.num.stops),
+    mutate(number.of.stops.diff = abs(obs.trip.size - scheduled.trip$sch.num.stops),
            time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
     filter(time.diff < 30 & (!obs.paired)) %>%
     ungroup() %>%
@@ -741,7 +751,7 @@ match.trips.by.time.initial.stop.num.stops <- function(observed.trips, scheduled
     rowwise() %>%
     mutate(initial.stop.dist = distHaversine(c(obs.longitude,obs.latitude),
                                              scheduled.trip[1,c("sch.stop.lon","sch.stop.lat")]),
-           number.of.stops.diff = abs(obs.num.stops - scheduled.trip$sch.num.stops),
+           number.of.stops.diff = abs(obs.trip.size - scheduled.trip$sch.num.stops),
            time.diff = abs(difftime(obs.timestamp, scheduled.trip$sch.departure.time, units = "mins"))) %>%
     filter(initial.stop.dist < 400 & time.diff < 30 & (!obs.paired)) %>%
     ungroup() %>%
@@ -777,7 +787,6 @@ match.line.trips <- function(line.observed.trips, line.scheduled.trips, matching
   obs.trips <- line.observed.trips
   sch.trips <- line.scheduled.trips %>% filter(as.character(route_short_name) == curr.line)
   
-  obs.trips$trip.id <- 1:nrow(obs.trips)
   obs.trips$paired <- rep(FALSE,nrow(obs.trips))
   sch.trips$paired <- rep(FALSE,nrow(sch.trips))
   
@@ -791,15 +800,20 @@ match.line.trips <- function(line.observed.trips, line.scheduled.trips, matching
     if (nrow(match) == 1) {
       obs.trips[obs.trips$obs.trip.id == match$obs.trip.id,c("obs.paired")] = TRUE
       sch.trips[i,c("sch.paired")] = TRUE
-      matched.trips <- rbind(matched.trips,cbind(match,sch.trips[i,]))
+      matched.trips <- rbind(matched.trips,
+                             data.frame(
+                               obs.trip.id=match[,c("obs.trip.id")],
+                               sch.trip.id=sch.trips[i,c("sch.trip.id")]))
     }
   }
   
   unmatched.sch.trips <- sch.trips %>% ungroup %>% filter(!sch.paired)
   unmatched.obs.trips <- obs.trips %>% ungroup %>% filter(!obs.paired)
   
-  matched.trips <- plyr::rbind.fill(matched.trips,unmatched.sch.trips)
-  matched.trips <- plyr::rbind.fill(matched.trips,unmatched.obs.trips)
+  matched.trips <- rbind(matched.trips,data.frame(obs.trip.id=rep(NA,nrow(unmatched.sch.trips)),
+                                                  sch.trip.id=unmatched.sch.trips$sch.trip.id))
+  matched.trips <- rbind(matched.trips,data.frame(obs.trip.id=unmatched.obs.trips$obs.trip.id,
+                                                  sch.trip.id=rep(NA,nrow(unmatched.obs.trips))))
   
   return(matched.trips)
 }
@@ -809,7 +823,7 @@ match.trips.initial.stops <- function(observed.trips.initial.stops, scheduled.tr
   if(verbose) cat("day.service.id:",day.service.id,"\n")
   scheduled.trips <- scheduled.trips.initial.stops %>% filter(service_id == day.service.id)
   
-  if(verbose) cat("Scheduled_trips size:",nrow(scheduled.trips),"\n")
+  if(verbose) cat("Scheduled trips size:",nrow(scheduled.trips),"\n")
   
   matched.trips <- data.frame()
   matched.trips <- observed.trips.initial.stops %>% 
@@ -818,6 +832,8 @@ match.trips.initial.stops <- function(observed.trips.initial.stops, scheduled.tr
     do(match.line.trips(.,scheduled.trips,matching.type,verbose)) %>%
     ungroup() %>%
     rbind(matched.trips,.)
+  
+  return(matched.trips)
 }
 
 build.service.ids.df <- function(gtfs.folder.path) {
@@ -828,22 +844,53 @@ build.service.ids.df <- function(gtfs.folder.path) {
   return(service.ids)
 }
 
+align.trips <- function(stop.matches,stops.gtfs.data,obs.trip.id,sch.trip.id,verbose=FALSE) {
+  aligned.trips <- data.frame()
+  obs.trip <- stop.matches %>% filter(trip.id == obs.trip.id)
+  sch.trip <- stops.gtfs.data %>% filter(trip_id == sch.trip.id)
+  
+  obs.trip.row <- 1
+  sch.trip.row <- 1
+  
+  if(verbose) cat("\nAligning obs trip #",obs.trip.id,"(size =",nrow(obs.trip),
+                  ") to sch trip",sch.trip.id,"(size =",nrow(sch.trip),").\n")
+  while(obs.trip.row <= nrow(obs.trip) & sch.trip.row <= nrow(sch.trip)) {
+    aligned.trips <- rbind.data.frame(aligned.trips,
+                           cbind.data.frame(obs.trip[obs.trip.row,c("line.code","stop_id","stop_name",
+                                                                    "stop_lat","stop_lon","bus.code",
+                                                                    "trip.id","timestamp")],
+                                 sch.trip[sch.trip.row,c("arrival_time","stop_sequence","service_id")]))
+    obs.trip.row <- obs.trip.row + 1
+    sch.trip.row <- sch.trip.row + 1
+  }
+  
+  return(aligned.trips)
+}
+
 match.trips <- function(stop.matches,stops.gtfs.data,service.ids,matching.type=1,verbose=FALSE) {
+  match <- list()
   
   if(verbose) print("Parsing timestamp...")
   
-  observed.trips <- stop.matches
-  observed.trips$timestamp <- parse_date_time(observed.trips$timestamp, "ymd HMS", tz = "GMT-3")
+  observed.stops <- stop.matches
+  observed.stops$timestamp <- parse_date_time(observed.stops$timestamp, "ymd HMS", tz = "GMT-3")
   
   if(verbose) print("Adding service_id to observed trips...")
   
-  observed.trips.initial.stops <- get.observed.trips.initial.stops(observed.trips)
+  observed.trips <- get.obs.trips(observed.stops)
+  observed.stops <- merge(observed.stops,observed.trips,c("line.code","bus.code","trip.num"))
+  
+  observed.trips.initial.stops <- observed.stops %>%
+    group_by(trip.id) %>% 
+    arrange(timestamp) %>% 
+    filter(row_number() == 1)
   observed.trips.initial.stops$weekday <- tolower(wday(observed.trips.initial.stops$timestamp, label=TRUE, abbr=FALSE))
   observed.trips.initial.stops <- merge(observed.trips.initial.stops, service.ids, by.x="weekday",by.y="variable")
   
   if(verbose) print("Retrieving scheduled trips initial stops...")
   
-  scheduled.trips.initial.stops <- get.trips.initial.stops(stops.gtfs.data)
+  scheduled.stops <- stops.gtfs.data
+  scheduled.trips.initial.stops <- get.trips.initial.stops(scheduled.stops)
   
   if(verbose) print("Setting date...")
   
@@ -855,7 +902,13 @@ match.trips <- function(stop.matches,stops.gtfs.data,service.ids,matching.type=1
   
   if(verbose) print("Matching trips...")
   
-  match.trips.initial.stops(observed.trips.initial.stops,scheduled.trips.initial.stops,matching.type,verbose)
+  match$trip.matches <- match.trips.initial.stops(observed.trips.initial.stops,scheduled.trips.initial.stops,matching.type,verbose)
+  if(verbose) print("Aligning matched trips stops...")
+  match$stops.matches <- match$trip.matches %>% 
+     filter(!(is.na(obs.trip.id) | is.na(sch.trip.id))) %>%
+     rowwise() %>%
+     do(align.trips(observed.stops,scheduled.stops,.$obs.trip.id,.$sch.trip.id,verbose))
+  return(match)
 }
 
 #' Builds a map with gps points locations for a specified line and bus
