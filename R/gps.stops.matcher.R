@@ -218,16 +218,14 @@ match.trip.locations.stops <- function(trip.locations.df, stops.locations.df, in
           cat("Jumping to next stop...\n")
         }
         next
-        # print("It seems the trip is shorter than usual. Check the data tables for more details.")
-        # print("Exiting matching!")
-        # break
       }
     }
     
     matching.interval <-refine.match(locations.df = trip.locations.df, stops.df = stops.locations.df, 
                        loc.row = location.row, st.row = stop.row, interval.range = 20)
-    if (verbose) cat("Match between stop#",stop.row,"and location#",location.row,"with distance=",
-                     get.stop.location.dist(trip.locations.df,stops.locations.df,stop.row,location.row),"m\n")
+    if (verbose) cat("Match between stop#",stops.locations.df[stop.row, c("stop_id")],"(row#",
+                     stop.row,") and location#",location.row,"(timestamp=",format(trip.locations.df[location.row,]$timestamp,"%H:%M:%S"),
+                     ") with distance=",get.stop.location.dist(trip.locations.df,stops.locations.df,stop.row,location.row),"m\n")
     stops.locations.df[stop.row, c("location.match")] <- matching.interval[1,c("loc.row")]
   }
   
@@ -911,6 +909,10 @@ match.trips <- function(stop.matches,stops.gtfs.data,service.ids,matching.type=1
   return(match)
 }
 
+get.city.map <- function(city.name) {
+  qmap(city.name, zoom = 12, maptype = 'hybrid')
+}
+
 #' Builds a map with gps points locations for a specified line and bus
 #'
 #'  This function filters the input GPS data points, selecting observations with the specified line and bus codes and plots these points in a Google Map.
@@ -926,41 +928,41 @@ match.trips <- function(stop.matches,stops.gtfs.data,service.ids,matching.type=1
 #' @examples
 #'
 #' @export
-plot.gps.data <- function(city.name, gps.data, lcode, bcode, map.zoom=12, num.points=NULL) {
+plot.gps.data <- function(city.map, gps.data, lcode, bcode, map.zoom=12, num.points=NULL) {
   selected.gps.data <- gps.data %>% filter(line.code == lcode & bus.code == bcode)
   if (!missing(num.points)) {
     selected.gps.data <- selected.gps.data %>% head(num.points)
   }
   selected.gps.data$row.num <- 1:nrow(selected.gps.data)
-  map <- qmap(city.name, zoom = 12, maptype = 'hybrid') +
+  map <- city.map +
     geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5) +
-    geom_text(data = selected.gps.data, aes(x = longitude, y = latitude, label = row.num), color="black", size = 5, vjust = 0, hjust = -0.2)
+    geom_text(data = selected.gps.data, aes(x = longitude, y = latitude, label = format(timestamp,"%H:%M:%S")), color="black", size = 3, vjust = 0, hjust = -0.2)
   return(map)
 }
 
 
-plot.stops.data <- function(city.name, stops.data, lcode, trip.id, num.points=NULL, map.zoom=12) {
+plot.stops.data <- function(city.map, stops.data, lcode, trip.id, num.points=NULL, map.zoom=12) {
   selected.stops.data <- stops.data %>% filter(route_short_name == lcode & trip_id == trip.id)
   if (!missing(num.points)) {
     selected.stops.data <- selected.stops.data %>% head(num.points)
   }
-  map <- qmap(city.name, zoom = map.zoom, maptype = 'hybrid') +
+  map <- city.map +
     geom_point(data = selected.stops.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5) +
     geom_text(data = selected.stops.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = 0, hjust = -0.5)
   return(map)
 }
 
-plot.stop.matches.data <- function(city.name, matches.data, lcode, bcode, trip.num, num.points=NULL, map.zoom=12) {
-  selected.stop.matches.data <- matches.data %>% filter(route_short_name == lcode & bus.code == bcode & trip.num == trip.num)
+plot.stop.matches.data <- function(city.map, matches.data, lcode, bcode, tnum, num.points=NULL, map.zoom=12) {
+  selected.stop.matches.data <- matches.data %>% filter(route_short_name == lcode & bus.code == bcode & trip.num == tnum)
   if (!missing(num.points)) {
     selected.stop.matches.data <- selected.stop.matches.data %>% head(num.points)
   }
   
-  map <- qmap(city.name, zoom = map.zoom, maptype = 'hybrid') +
-    geom_point(data = selected.stop.matches.data, aes(x = longitude, y = latitude), color="green", size=3, alpha=0.5) +
-    geom_point(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat), color="red", size=3, alpha=0.5) +
+  map <- city.map +
+    geom_point(data = selected.stop.matches.data, aes(x = longitude, y = latitude), color="red", size=3, alpha=0.5) +
+    geom_point(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5) +
     geom_text(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = -0.5, hjust = 0) +
-    geom_text(data = selected.stop.matches.data, aes(x = longitude, y = latitude, label = timestamp), color="white", size = 3, fontface="bold", vjust = +0.5, hjust = 0)
+    geom_text(data = selected.stop.matches.data, aes(x = longitude, y = latitude, label = format(timestamp,"%H:%M:%S")), color="white", size = 3, fontface="bold", vjust = +0.5, hjust = 0)
   return(map)
 }
 
