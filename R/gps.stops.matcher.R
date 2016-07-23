@@ -933,7 +933,6 @@ plot.gps.data <- function(city.map, gps.data, lcode, bcode, map.zoom=12, num.poi
   if (!missing(num.points)) {
     selected.gps.data <- selected.gps.data %>% head(num.points)
   }
-  selected.gps.data$row.num <- 1:nrow(selected.gps.data)
   map <- city.map +
     geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5) +
     geom_text(data = selected.gps.data, aes(x = longitude, y = latitude, label = format(timestamp,"%H:%M:%S")), color="black", size = 3, vjust = 0, hjust = -0.2)
