@@ -857,9 +857,9 @@ align.trips <- function(stop.matches,stops.gtfs.data,obs.trip.id,sch.trip.id,ver
   while(obs.trip.row <= nrow(obs.trip) & sch.trip.row <= nrow(sch.trip)) {
     aligned.trips <- rbind.data.frame(aligned.trips,
                            cbind.data.frame(obs.trip[obs.trip.row,c("line.code","stop_id","stop_name",
-                                                                    "stop_lat","stop_lon","bus.code",
-                                                                    "trip.id","timestamp")],
-                                 sch.trip[sch.trip.row,c("arrival_time","stop_sequence","service_id")]))
+                                                                    "bus.code","trip.id","timestamp",
+                                                                    "latitude","longitude")],
+                                 sch.trip[sch.trip.row,c("arrival_time","stop_sequence","service_id","stop_lat","stop_lon")]))
     obs.trip.row <- obs.trip.row + 1
     sch.trip.row <- sch.trip.row + 1
   }
