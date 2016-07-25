@@ -901,11 +901,16 @@ match.trips <- function(stop.matches,stops.gtfs.data,service.ids,matching.type=1
   if(verbose) print("Matching trips...")
   
   match$trip.matches <- match.trips.initial.stops(observed.trips.initial.stops,scheduled.trips.initial.stops,matching.type,verbose)
+  
   if(verbose) print("Aligning matched trips stops...")
+  
   match$stops.matches <- match$trip.matches %>% 
      filter(!(is.na(obs.trip.id) | is.na(sch.trip.id))) %>%
      rowwise() %>%
      do(align.trips(observed.stops,scheduled.stops,.$obs.trip.id,.$sch.trip.id,verbose))
+  
+  match$matching.type <- matching.type
+  
   return(match)
 }
 
