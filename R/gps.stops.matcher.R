@@ -494,7 +494,7 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,line.initia
 #'
 #' @export
 get.line.longest.trip <- function(line,stops.df) {
-  line.stops.detailed <- filter(stops.df, route_short_name == line)
+  line.stops.detailed <- filter(stops.df, as.character(route_short_name) == as.character(line))
   
   longest.trip <- line.stops.detailed %>% group_by(trip_id) %>% summarise(num.stops = n()) %>%
     arrange(num.stops) %>% filter(row_number() == n())
@@ -646,7 +646,7 @@ prepare.stops.data <- function(gtfs.folder.path) {
   
   stops.detailed <- stops.detailed %>%
     select(trip_id, arrival_time, departure_time, stop_id, stop_sequence, service_id, trip_headsign, direction_id, route_id, route_short_name, route_long_name,
-           route_type, route_color, stop_name, stop_lat, stop_lon) %>%
+           route_type, route_color, stop_name, stop_lat, stop_lon, shape_id) %>%
     mutate(arrival_time = fix.timestamp(arrival_time),
            departure_time = fix.timestamp(departure_time)) %>%
     arrange(route_short_name, trip_id, stop_sequence)
