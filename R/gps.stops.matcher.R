@@ -933,13 +933,13 @@ get.city.map <- function(city.name) {
 #' @examples
 #'
 #' @export
-plot.gps.data <- function(city.map, gps.data, lcode, bcode, map.zoom=12, num.points=NULL) {
+plot.gps.data <- function(city.map, gps.data, lcode, bcode, map.zoom=12, range=NULL, point.color="blue") {
   selected.gps.data <- gps.data %>% filter(line.code == lcode & bus.code == bcode)
-  if (!missing(num.points)) {
-    selected.gps.data <- selected.gps.data %>% head(num.points)
+  if (!missing(range)) {
+    selected.gps.data <- selected.gps.data %>% filter(row_number() %in% range)
   }
   map <- city.map +
-    geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color="blue", size=3, alpha=0.5) +
+    geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color=point.color, size=3, alpha=0.5) +
     geom_text(data = selected.gps.data, aes(x = longitude, y = latitude, label = format(timestamp,"%H:%M:%S")), color="black", size = 3, vjust = 0, hjust = -0.2)
   return(map)
 }
@@ -967,6 +967,16 @@ plot.stop.matches.data <- function(city.map, matches.data, lcode, bcode, tnum, n
     geom_point(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5) +
     geom_text(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = -0.5, hjust = 0) +
     geom_text(data = selected.stop.matches.data, aes(x = longitude, y = latitude, label = format(timestamp,"%H:%M:%S")), color="white", size = 3, fontface="bold", vjust = +0.5, hjust = 0)
+  return(map)
+}
+
+plot.shape.data <- function(city.map, shapes.data, shape.id, range=NULL, map.zoom=12) {
+  selected.shapes.data <- shapes.data %>% filter(shape_id == shape.id)
+  if (!missing(range)) {
+    selected.shapes.data <- selected.shapes.data %>% filter(row_number() %in% range)
+  }
+  map <- city.map +
+    geom_point(data = selected.shapes.data, aes(x = shape_pt_lon, y = shape_pt_lat), color="blue", size=3, alpha=0.5)
   return(map)
 }
 
