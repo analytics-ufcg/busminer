@@ -936,8 +936,11 @@ get.city.map <- function(city.name) {
 plot.gps.data <- function(city.map, gps.data, lcode, bcode, map.zoom=12, range=NULL, point.color="blue") {
   selected.gps.data <- gps.data %>% filter(line.code == lcode & bus.code == bcode)
   if (!missing(range)) {
-    selected.gps.data <- selected.gps.data %>% filter(row_number() %in% range)
+    selected.gps.data <- selected.gps.data %>% 
+      ungroup() %>%
+      filter(row_number() %in% range)
   }
+
   map <- city.map +
     geom_point(data = selected.gps.data, aes(x = longitude, y = latitude), color=point.color, size=3, alpha=0.5) +
     geom_text(data = selected.gps.data, aes(x = longitude, y = latitude, label = format(timestamp,"%H:%M:%S")), color="black", size = 3, vjust = 0, hjust = -0.2)
@@ -980,17 +983,17 @@ plot.shape.data <- function(city.map, shapes.data, shape.id, range=NULL, map.zoo
   return(map)
 }
 
-plot.estimated.stops.times.data <- function(city.map, matches.data, lcode, bcode, tnum, num.points=NULL, map.zoom=12) {
-  selected.stop.matches.data <- matches.data %>% filter(route_short_name == lcode & bus.code == bcode & trip.num == tnum)
-  if (!missing(num.points)) {
-    selected.stop.matches.data <- selected.stop.matches.data %>% head(num.points)
+plot.estimated.stops.times.data <- function(city.map, matches.data, lcode, bcode, tnum, range=NULL, map.zoom=12) {
+  selected.stop.matches.data <- matches.data %>% filter(line.code == lcode & bus.code == bcode & trip.num == tnum)
+  if (!missing(range)) {
+    selected.stop.matches.data <- selected.stop.matches.data %>% filter(row_number() %in% range)
   }
   
   map <- city.map +
-    geom_point(data = selected.stop.matches.data, aes(x = longitude, y = latitude), color="red", size=3, alpha=0.5) +
+    # geom_point(data = selected.stop.matches.data, aes(x = longitude, y = latitude), color="red", size=3, alpha=0.5) +
     geom_point(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5) +
     geom_text(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = -0.5, hjust = 0) +
-    geom_text(data = selected.stop.matches.data, aes(x = longitude, y = latitude, label = format(timestamp,"%H:%M:%S")), color="white", size = 3, fontface="bold", vjust = +0.5, hjust = 0)
+    geom_text(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat, label = format(arrival_time,"%H:%M:%S")), color="white", size = 3, fontface="bold", vjust = +0.5, hjust = 0)
   return(map)
 }
 
