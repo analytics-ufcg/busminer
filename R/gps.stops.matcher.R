@@ -980,6 +980,20 @@ plot.shape.data <- function(city.map, shapes.data, shape.id, range=NULL, map.zoo
   return(map)
 }
 
+plot.estimated.stops.times.data <- function(city.map, matches.data, lcode, bcode, tnum, num.points=NULL, map.zoom=12) {
+  selected.stop.matches.data <- matches.data %>% filter(route_short_name == lcode & bus.code == bcode & trip.num == tnum)
+  if (!missing(num.points)) {
+    selected.stop.matches.data <- selected.stop.matches.data %>% head(num.points)
+  }
+  
+  map <- city.map +
+    geom_point(data = selected.stop.matches.data, aes(x = longitude, y = latitude), color="red", size=3, alpha=0.5) +
+    geom_point(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat), color="blue", size=3, alpha=0.5) +
+    geom_text(data = selected.stop.matches.data, aes(x = stop_lon, y = stop_lat, label = stop_id), color="black", size = 4, fontface="bold", vjust = -0.5, hjust = 0) +
+    geom_text(data = selected.stop.matches.data, aes(x = longitude, y = latitude, label = format(timestamp,"%H:%M:%S")), color="white", size = 3, fontface="bold", vjust = +0.5, hjust = 0)
+  return(map)
+}
+
 set.stops.times.date <- function(stops.df, date.str) {
   stops.df.with.date <- stops.df %>% 
     mutate(arrival_time = parse_date_time(paste(date.str, as.character(arrival_time)),"ymd HMS", tz = "GMT-3"),
