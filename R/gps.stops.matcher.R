@@ -493,8 +493,9 @@ match.bus.locations.stops <- function(bus.locations.df,line.stops.df,line.initia
 #' @examples
 #'
 #' @export
-get.line.longest.trip <- function(line,stops.df) {
+get.line.longest.trip <- function(line,stops.df,shape.id=NULL) {
   line.stops.detailed <- filter(stops.df, as.character(route_short_name) == as.character(line))
+  if (!missing(shape.id)) line.stops.detailed <- line.stops.detailed %>% filter(shape_id == shape.id)
   
   longest.trip <- line.stops.detailed %>% group_by(trip_id) %>% summarise(num.stops = n()) %>%
     arrange(num.stops) %>% filter(row_number() == n())
