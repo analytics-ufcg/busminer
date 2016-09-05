@@ -144,6 +144,19 @@ estimate.trip.arrival.times <- function(trip.projected.gps.data,shapes.data,stop
     return (projected.stops.data)
 }
 
+get.prev.var <- function(bus.gps.data,curr.row,trip.first.row,curr.trip.num,var.name) {
+    prev.var <- NA
+    if ((curr.row == 1) | (curr.row == trip.first.row)) {
+        prev.var <- -1
+    } else if (bus.gps.data[curr.row-1,]$trip.num < curr.trip.num) {
+        prev.var <- -1
+    }  else {
+        prev.var <- unname(unlist(bus.gps.data[curr.row-1,get.column.index(bus.gps.data,var.name)]))
+    }
+    
+    return(prev.var)
+}
+
 get.prev.seq <- function(bus.gps.data,curr.row,trip.first.row,curr.trip.num) {
     prev.seq <- NA
     if ((curr.row == 1) | (curr.row == trip.first.row)) {
