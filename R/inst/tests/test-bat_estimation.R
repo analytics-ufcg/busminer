@@ -1,4 +1,15 @@
 source("../../bat_estimation.R")
+#TESTADOS
+# get.column.index
+# get.line.shapes
+# get.prev.var
+# get.secs.since.midnight
+# secs.to.timestamp
+
+#TESTANDO 
+# get.prev.seq
+
+# to run test_file("R/inst/tests/test-bat_estimation.R")
 
 context("Helper Functions")
 test_that("get.column.index returns the correct number", {
@@ -55,3 +66,39 @@ test_that("get.prev.var returns -1 when the previous row belongs to an earlier t
     
     expect_equal(get.prev.var(bus.gps.data,2,1,2,"var"),-1)
 })
+
+
+test_that("get.secs.since.midnight returns the seconds since midnight from timestap", {
+
+  expect_equal(get.secs.since.midnight("2016-10-19 06:46:31"),24391)
+  expect_equal(get.secs.since.midnight("2016-09-06 15:27:45"),55665)
+  
+})
+
+test_that("secs.to.timestamp returns the timestamp (POSIXct format) from second and date", {
+  
+  expect_equal(secs.to.timestamp(24391, "2016-10-19"), as.POSIXct( "2016-10-19 06:46:31", tz="UTC"))
+  expect_equal(secs.to.timestamp(55665, "2016-09-06"), as.POSIXct("2016-09-06 15:27:45", tz="UTC"))
+  
+})
+
+test_that("get.prev.seq returns -1 when the current row is the first in the data frame", {
+  bus.gps.data <- data.frame(trip.num = rep(1,10))
+  
+  expect_equal(get.prev.seq(bus.gps.data,1,1,1),-1)
+
+})
+
+test_that("get.prev.seq returns -1 when the current row is the first in the trip", {
+  bus.gps.data <- data.frame(trip.num = rep(1,10))
+  
+  expect_equal(get.prev.seq(bus.gps.data,2,2,1),-1)
+  expect_equal(get.prev.seq(bus.gps.data,5,5,3),-1)  
+
+})
+
+
+
+
+
+

@@ -1,5 +1,7 @@
 #source("gps.stops.matcher.R")
 
+library(dplyr)
+
 # Constants
 
 MIN_TRIP_SIZE = 10
