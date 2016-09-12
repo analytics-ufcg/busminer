@@ -1,3 +1,5 @@
+library(testthat)
+
 source("../../bat_estimation.R")
 
 context("Helper Functions")
@@ -55,3 +57,4 @@ test_that("get.prev.var returns -1 when the previous row belongs to an earlier t
     
     expect_equal(get.prev.var(bus.gps.data,2,1,2,"var"),-1)
 })
+
