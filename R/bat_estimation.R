@@ -1,7 +1,5 @@
 #source("gps.stops.matcher.R")
 
-library(dplyr)
-
 # Constants
 
 MIN_TRIP_SIZE = 10
@@ -68,7 +66,7 @@ match.gps.trajectory.to.shape <- function(shapes.data,line.shapes.ids,gps.trajec
     closest.shape <- data.frame(point.dist = NA, shape_id = -1)
     max.dist <- ifelse(strict.matching,DEF_MAXIMUM_DIST,.Machine$double.xmax)
     
-    while ((is.na(closest.shape$point.dist) | first(closest.shape$point.dist) > max.dist) & gps.data.row <= nrow(gps.trajectory)){
+    while (gps.data.row <= nrow(gps.trajectory) & (is.na(closest.shape$point.dist) | first(closest.shape$point.dist) > max.dist)){
         
         shapes.initial.points$point.dist <- distHaversine(shapes.initial.points[,c("shape_pt_lon","shape_pt_lat")],
                                                           gps.trajectory[gps.data.row,c("longitude","latitude")])
@@ -159,32 +157,6 @@ get.prev.var <- function(bus.gps.data,curr.row,trip.first.row,curr.trip.num,var.
     return(prev.var)
 }
 
-get.prev.seq <- function(bus.gps.data,curr.row,trip.first.row,curr.trip.num) {
-    prev.seq <- NA
-    if ((curr.row == 1) | (curr.row == trip.first.row)) {
-        prev.seq <- -1
-    } else if (bus.gps.data[curr.row-1,]$trip.num < curr.trip.num) {
-        prev.seq <- -1
-    }  else {
-        prev.seq <- bus.gps.data[curr.row-1,]$shape.pt.match
-    }
-    
-    return(prev.seq)
-}
-
-get.prev.time <- function(bus.gps.data,curr.row,trip.first.row,curr.trip.num) {
-    prev.time <- NA
-    if ((curr.row == 1) | (curr.row == trip.first.row)) {
-        prev.time <- -1
-    } else if (bus.gps.data[curr.row-1,]$trip.num < curr.trip.num) {
-        prev.time <- -1
-    }  else {
-        prev.time <- bus.gps.data[curr.row-1,]$timestamp
-    }
-    
-    return(prev.time)
-}
-
 match.point.to.shape <- function(bus.gps.data,line.shape,curr.row,trip.first.row) {
     matching.line.shape <- NA
     
@@ -252,11 +224,11 @@ delimitate.current.trip <- function(bus.gps.data,line.shape,trip.first.row,curr.
         
         curr.pt.shape.match <- match.point.to.shape(bus.gps.data,line.shape,gps.data.row,trip.first.row)
         
-        prev.seq <- get.prev.seq(bus.gps.data,gps.data.row,trip.first.row,curr.trip.num)
-        prev.time <- get.prev.seq(bus.gps.data,gps.data.row,trip.first.row,curr.trip.num)
+        prev.seq <- get.prev.var(bus.gps.data,gps.data.row,trip.first.row,curr.trip.num,"shape.pt.match")
+        prev.time <- get.prev.var(bus.gps.data,gps.data.row,trip.first.row,curr.trip.num,"timestamp")
         
         curr.seq <- curr.pt.shape.match$shape_pt_sequence
-        curr.time <-  get.secs.since.midnight(bus.gps.data[gps.data.row,]$timestamp)
+        curr.time <-  bus.gps.data[gps.data.row,]$timestamp
         
         if((prev.time != -1) & (curr.time - prev.time > MAX_TIMEDIFF_BETWEEN_POINTS)){
             if(verbose) print("Found new trip - time limit between consecutive points exceeded!")
@@ -292,36 +264,42 @@ identify.bus.trips <- function(bus.gps.data,shapes.data,stops.data,verbose=FALSE
     curr.line.code <- as.character(first(bus.gps.data$line.code))
     line.shapes <- get.line.shapes(stops.data,curr.line.code)
     
-    gps.data.row <- 1
-    bus.gps.data <- bus.gps.data %>%
-        mutate(shape.pt.match = NA,
-               matching.dist = NA,
-               trip.num = NA,
-               consistent.point = TRUE)
-    curr.trip.num = 1
-    trip.shape.matches <- data.frame(trip.num=numeric(),shape.id=numeric(),longest.trip.id=numeric())
-    
-    if(verbose) print("Finding trips...")
-    
-    while(gps.data.row <= nrow(bus.gps.data)){
-        trip.shape.match <- match.gps.trajectory.to.shape(shapes.data,line.shapes,bus.gps.data, gps.data.row,
-                                                          strict.matching = (curr.trip.num == 1))
+    if (nrow(line.shapes) == 0) {
+        print(paste("Found no shapes for current line:",curr.line.code))
+        bus.gps.data=data.frame()
+        trip.shape.matches=data.frame()
+    } else {
+        gps.data.row <- 1
+        bus.gps.data <- bus.gps.data %>%
+            mutate(shape.pt.match = NA,
+                   matching.dist = NA,
+                   trip.num = NA,
+                   consistent.point = TRUE)
+        curr.trip.num = 1
+        trip.shape.matches <- data.frame(trip.num=numeric(),shape.id=numeric(),longest.trip.id=numeric())
         
-        gps.data.row <- trip.shape.match$gps.row
-        line.shape.id <- trip.shape.match$shape.id
-        trip.first.row <- gps.data.row
+        if(verbose) print("Finding trips...")
         
-        cat("\nNext Trip: GPS Row:",gps.data.row,"; Line Shape: ",line.shape.id,"\n")
-        
-        longest.line.trip <- get.line.longest.trip(curr.line.code,stops.data,line.shape.id)
-        trip.shape.matches <- rbind(trip.shape.matches,data.frame(trip.num=curr.trip.num,shape.id=line.shape.id,
-                                                                  longest.trip.id=first(longest.line.trip$trip_id)))
-        line.shape <- shapes.data %>% filter(shape_id == line.shape.id)
-        
-        trip.gps.data <- delimitate.current.trip(bus.gps.data,line.shape,trip.first.row,curr.trip.num,verbose)
-        bus.gps.data[trip.gps.data$trip.first.row:trip.gps.data$trip.last.row,] <- trip.gps.data$gps.data
-        curr.trip.num <- curr.trip.num + 1
-        gps.data.row <- trip.gps.data$trip.last.row + 1
+        while(gps.data.row <= nrow(bus.gps.data)){
+            trip.shape.match <- match.gps.trajectory.to.shape(shapes.data,line.shapes,bus.gps.data, gps.data.row,
+                                                              strict.matching = (curr.trip.num == 1))
+            
+            gps.data.row <- trip.shape.match$gps.row
+            line.shape.id <- trip.shape.match$shape.id
+            trip.first.row <- gps.data.row
+            
+            cat("\nNext Trip: GPS Row:",gps.data.row,"; Line Shape: ",line.shape.id,"\n")
+            
+            longest.line.trip <- get.line.longest.trip(curr.line.code,stops.data,line.shape.id)
+            trip.shape.matches <- rbind(trip.shape.matches,data.frame(trip.num=curr.trip.num,shape.id=line.shape.id,
+                                                                      longest.trip.id=first(longest.line.trip$trip_id)))
+            line.shape <- shapes.data %>% filter(shape_id == line.shape.id)
+            
+            trip.gps.data <- delimitate.current.trip(bus.gps.data,line.shape,trip.first.row,curr.trip.num,verbose)
+            bus.gps.data[trip.gps.data$trip.first.row:trip.gps.data$trip.last.row,] <- trip.gps.data$gps.data
+            curr.trip.num <- curr.trip.num + 1
+            gps.data.row <- trip.gps.data$trip.last.row + 1
+        }
     }
     
     return(list(bus.gps.data=bus.gps.data,trip.shape.matches=trip.shape.matches))
@@ -331,7 +309,10 @@ estimate.bus.arrival.times <- function(stops.data, shapes.data, bus.gps.data, ve
     cat("\nEstimating arrival times for vehycle",as.character(first(bus.gps.data$bus.code)),":\n")
     
     bus.trips <- identify.bus.trips(bus.gps.data,shapes.data,stops.data,verbose)
-    # return(bus.gps.data)
+    if (nrow(bus.trips$bus.gps.data) == 0) {
+        print(paste("Found no trips for bus",first(bus.gps.data$bus.code)))
+        return(data.frame())
+    }
     
     projected.bus.gps.data <- bus.trips$bus.gps.data %>%
         filter(consistent.point & (!is.na(trip.num)))
