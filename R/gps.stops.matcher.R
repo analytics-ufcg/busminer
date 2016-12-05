@@ -611,9 +611,9 @@ prepare.gps.data.old <- function(bus.gps.csv.file.path) {
 #' @examples
 #'
 #' @export
-prepare.gps.data <- function(gps.data) {
+prepare.gps.data <- function(gps.data, date.time.format = "ymd HMS") {
   location.data <- gps.data
-  location.data$timestamp <- parse_date_time(location.data$timestamp, "ymd HMS", tz = "GMT-3")
+  location.data$timestamp <- parse_date_time(location.data$timestamp, date.time.format, tz = "GMT-3")
   
   return(location.data)
 }
