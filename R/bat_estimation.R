@@ -306,7 +306,7 @@ identify.bus.trips <- function(bus.gps.data,shapes.data,stops.data,verbose=FALSE
 }
 
 estimate.bus.arrival.times <- function(stops.data, shapes.data, bus.gps.data, verbose=FALSE) {
-    cat("\nEstimating arrival times for vehycle",as.character(first(bus.gps.data$bus.code)),":\n")
+    cat("\nEstimating arrival times for line:",as.character(first(bus.gps.data$line.code))," - vehycle:",as.character(first(bus.gps.data$bus.code)),"\n")
     
     bus.trips <- identify.bus.trips(bus.gps.data,shapes.data,stops.data,verbose)
     if (nrow(bus.trips$bus.gps.data) == 0) {
