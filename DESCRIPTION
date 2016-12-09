@@ -4,12 +4,11 @@ Version: 0.0.0.9500
 Authors@R: c(person("Tarciso", "Braz", email = "tarcisocomp@gmail.com", role = c("aut", "cre")),
              person("Jair", "Neto", email = "jair.neto@ccc.ufcg.edu.br", role = c("aut")))
 Description: A simple tool for matching bus GPS data to GTFS bus stops data.
-Imports:
+Depends: 
+    R (>= 3.2.3),
     dplyr,
     lubridate,
-    geosphere,
-Depends: 
-    R (>= 3.2.3)
+    geosphere
 License: GPL2
 Encoding: UTF-8
 LazyData: true
