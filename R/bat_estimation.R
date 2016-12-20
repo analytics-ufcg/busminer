@@ -288,7 +288,7 @@ identify.bus.trips <- function(bus.gps.data,shapes.data,stops.data,verbose=FALSE
             line.shape.id <- trip.shape.match$shape.id
             trip.first.row <- gps.data.row
             
-            cat("\nNext Trip: GPS Row:",gps.data.row,"; Line Shape: ",line.shape.id,"\n")
+            if(verbose) cat("\nNext Trip: GPS Row:",gps.data.row,"; Line Shape: ",line.shape.id,"\n")
             
             longest.line.trip <- get.line.longest.trip(curr.line.code,stops.data,line.shape.id)
             trip.shape.matches <- rbind(trip.shape.matches,data.frame(trip.num=curr.trip.num,shape.id=line.shape.id,
