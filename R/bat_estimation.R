@@ -7,7 +7,7 @@ ACCEPTABLE_DIST_THRESHOLD = 50
 MAX_TIMEDIFF_BETWEEN_POINTS = 1800
 
 # Functions
-
+#' @export
 get.closest.point.in.line <- function(point,line, lon.col.index, lat.col.index) {
     distances <- data.frame(shape_pt_sequence=line$shape_pt_sequence, dist=distHaversine(c(point[[lon.col.index]],point[[lat.col.index]]),line[,c("shape_pt_lon","shape_pt_lat")]))
     closest.point <- distances %>% 
@@ -23,11 +23,11 @@ project.gps.to.shape <- function(gps.data,shape.data, lon.col.index, lat.col.ind
         do(get.closest.point.in.line(.,shape.data, lon.col.index, lat.col.index))
     return(projection)
 }
-
+#' @export
 get.secs.since.midnight <- function(time) {
     secs.since.midnight <- 3600*hour(time) + 60*minute(time) + second(time)
 }
-
+#' @export
 secs.to.timestamp <- function(secs,date) {
     days <- floor(secs/86400)
     hours <- floor(secs/3600) %% 24
@@ -304,7 +304,7 @@ identify.bus.trips <- function(bus.gps.data,shapes.data,stops.data,verbose=FALSE
     
     return(list(bus.gps.data=bus.gps.data,trip.shape.matches=trip.shape.matches))
 }
-
+#' @export
 estimate.bus.arrival.times <- function(stops.data, shapes.data, bus.gps.data, verbose=FALSE) {
     cat("\nEstimating arrival times for line:",as.character(first(bus.gps.data$line.code))," - vehycle:",as.character(first(bus.gps.data$bus.code)),"\n")
     
